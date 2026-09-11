@@ -37,6 +37,7 @@ export default {
       boxShadow: {
         glow: "0 0 18px rgba(16, 185, 129, 0.28)",
         "glow-sm": "0 0 10px rgba(16, 185, 129, 0.22)",
+        "glow-lg": "0 0 34px rgba(16, 185, 129, 0.35)",
         "glow-red": "0 0 14px rgba(239, 68, 68, 0.25)",
         "glow-amber": "0 0 14px rgba(245, 158, 11, 0.22)",
       },

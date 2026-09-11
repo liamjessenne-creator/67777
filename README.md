@@ -9,7 +9,7 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
-[![Leaflet](https://img.shields.io/badge/Leaflet-1.9-199900?logo=leaflet)](https://leafletjs.com)
+[![Canvas Globe](https://img.shields.io/badge/Landing-Interactive%20Globe-10b981)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg)](LICENSE)
 
 </div>
@@ -29,7 +29,19 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 1. **City scan** — autocomplete a city or district (Nominatim, Photon fallback), then query OpenStreetMap's Overpass API for all `amenity=restaurant / fast_food / cafe / bar / pub` + named bakeries inside that exact area (result cap: 700).
 2. **Digital scoring** — every venue gets a `DigitalPresenceScore` (0–100): real website **+40** (a Facebook URL does *not* count), review base **+30**, socials **+30**, phone **+10**, published hours **+10**. Score < 40 → 🔴 **priority target**.
 3. **AI deep audit** (Groq, any OpenAI-compatible endpoint) — one click generates a sales-oriented **gap report**, a non-spammy **cold-outreach draft** (SMS/WhatsApp/Email), an **action plan** of 3 priced services, and even **discovers the venue's hidden official website** (verified reachable before being shown).
-4. **Workflow** — full-screen ranked results page, map view with priority-colored markers, CSV/JSON export, `localStorage` persistence.
+4. **Workflow** — landing page with an interactive globe, full-screen ranked results page, CSV/JSON export, `localStorage` persistence, built-in legal pages.
+
+## Landing page & legal
+
+The app opens on a **landing page** featuring an interactive wireframe globe (pure HTML canvas — rotating dot-matrix Earth with pulsing "internet" arcs; drag to rotate, scroll to zoom, **click it to enter the tool**).
+
+Built-in legal pages (linked in the footer and inside the tool):
+
+| Page | Route | Content |
+|---|---|---|
+| Mentions légales | `#/mentions-legales` | Éditeur, hébergement, propriété intellectuelle, responsabilité |
+| Confidentialité | `#/confidentialite` | RGPD : zéro serveur, localStorage uniquement, services tiers appelés |
+| CGU | `#/cgu` | Usages autorisés/interdits (anti-spam, opt-out, ODbL), responsabilité |
 
 ## Quick start
 
@@ -57,9 +69,9 @@ node overpass-test.mjs "Paris"   # validate Overpass queries for a city
 
 ## Screenshots
 
-| Ranked results page | Map view |
+| Landing (globe) | Ranked results page |
 |---|---|
-| Full-width table sorted by weakest digital presence, export buttons, AI website links | Dark dashboard with priority-colored circles (🔴 target · 🟡 medium · 🟢 disqualified) |
+| Interactive canvas globe — click to enter the tool | Full-width table sorted by weakest digital presence, export buttons, AI website links |
 
 ## Configuration (⚙ Settings)
 
@@ -74,7 +86,7 @@ node overpass-test.mjs "Paris"   # validate Overpass queries for a city
 
 ## Tech stack
 
-React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · Leaflet + OpenStreetMap tiles (no key) · react-markdown · Vitest
+React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · HTML-canvas globe (zero map dependencies) · react-markdown · Vitest
 
 ## Project layout
 
@@ -85,11 +97,12 @@ index.html          App.tsx            aiAgent.ts          ui.tsx
 package.json        main.tsx           overpass.ts         CitySearch.tsx
 vite.config.ts      index.css          enrichment.ts       LeadsTable.tsx
 tsconfig.json       types.ts           nominatim.ts        AuditDrawer.tsx
-tailwind.config.js  storage.ts         places.ts           MapView.tsx
-                    stats.ts           export.ts           SettingsModal.tsx
-                    useDebouncedValue.ts                   TopBar.tsx
-                                       enrichment.test.ts  FiltersPanel.tsx
-                                       overpass-test.mjs
+tailwind.config.js  storage.ts         places.ts           SettingsModal.tsx
+                    router.ts          stats.ts            TopBar.tsx
+                    Globe.tsx          export.ts           FiltersPanel.tsx
+                    Landing.tsx        useDebouncedValue.ts
+                    LegalPages.tsx
+                    enrichment.test.ts  overpass-test.mjs
 ```
 
 ## Notes

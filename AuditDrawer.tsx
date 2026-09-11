@@ -5,7 +5,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { AiAudit, Lead } from "./types";
 import { VENUE_TYPE_LABELS } from "./types";
-import { priorityBadgeClass, pinClassFor } from "./stats";
+import { priorityBadgeClass } from "./stats";
 import { Button, Spinner } from "./ui";
 
 type OutreachChannel = "sms" | "whatsapp" | "email";
@@ -51,7 +51,15 @@ export function AuditDrawer({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className={`inline-block h-3 w-3 shrink-0 ${pinClassFor(lead.enrichment.priority)}`} />
+                <span
+                  className={`inline-block h-3 w-3 shrink-0 rounded-full ${
+                    lead.enrichment.priority === "high"
+                      ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]"
+                      : lead.enrichment.priority === "medium"
+                        ? "bg-amber-400"
+                        : "bg-emerald-500"
+                  }`}
+                />
                 <h2 className="truncate text-base font-semibold text-slate-100">{lead.venue.name}</h2>
               </div>
               <p className="mt-0.5 text-xs text-slate-500">

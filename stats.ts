@@ -1,6 +1,6 @@
 /** Aggregated statistics and priority color helpers. */
 
-import type { Lead, MapPinColor, PriorityTier } from "./types";
+import type { Lead, PriorityTier } from "./types";
 
 export interface Stats {
   totalAnalyzed: number;
@@ -16,15 +16,6 @@ export function computeStats(leads: Lead[]): Stats {
       (l) => l.status === "contacted" || (l.audit != null && l.enrichment.priority === "high"),
     ).length,
   };
-}
-
-/** Spec pin colors: red = high prospect priority, yellow = medium, green = strong digital (disqualified). */
-export function pinColorFor(priority: PriorityTier): MapPinColor {
-  return priority === "high" ? "red" : priority === "medium" ? "yellow" : "green";
-}
-
-export function pinClassFor(priority: PriorityTier): string {
-  return `lead-pin lead-pin--${pinColorFor(priority)}`;
 }
 
 export function priorityBadgeClass(priority: PriorityTier): string {

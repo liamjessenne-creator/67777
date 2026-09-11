@@ -8,14 +8,20 @@ export function TopBar({
   stats,
   onOpenSettings,
   settingsOk,
+  onHome,
 }: {
   stats: Stats;
   onOpenSettings: () => void;
   settingsOk: boolean;
+  onHome?: () => void;
 }) {
   return (
     <header className="flex items-center gap-4 border-b border-surface-border bg-surface-raised/90 px-4 py-2.5 backdrop-blur">
-      <div className="flex items-center gap-2.5">
+      <button
+        onClick={onHome}
+        className="flex items-center gap-2.5 text-left"
+        title={onHome ? "Back to home" : undefined}
+      >
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent/25 to-accent/5 text-accent shadow-glow-sm ring-1 ring-accent/30">
           <Sparkles size={16} />
         </span>
@@ -27,7 +33,7 @@ export function TopBar({
             Internal Audit Tool
           </p>
         </div>
-      </div>
+      </button>
 
       {/* System status pill */}
       <span

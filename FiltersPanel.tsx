@@ -123,19 +123,19 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
 
       <div className="border-t border-surface-border pt-3">
         <span className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-          Map legend
+          Priority legend
         </span>
         <ul className="space-y-1 text-[11px] text-slate-400">
           <li className="flex items-center gap-2">
-            <span className="lead-pin lead-pin--high inline-block h-2.5 w-2.5" />
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.55)]" />
             Red — high prospect priority
           </li>
           <li className="flex items-center gap-2">
-            <span className="lead-pin lead-pin--medium inline-block h-2.5 w-2.5" />
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
             Yellow — medium prospect priority
           </li>
           <li className="flex items-center gap-2">
-            <span className="lead-pin lead-pin--low inline-block h-2.5 w-2.5" />
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
             Green — strong digital presence (disqualified)
           </li>
         </ul>

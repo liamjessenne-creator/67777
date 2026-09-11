@@ -88,6 +88,11 @@ export const AI_MODELS = [
 /** Preset IDs or any custom model id typed by the user (other providers). */
 export type AiModelId = (typeof AI_MODELS)[number] | (string & {});
 
+/** Top-level app "page": the tool itself or a static informational/legal page. */
+export type Role = "app" | "legal";
+/** Which static/legal page is displayed when role === "legal". */
+export type LegalPage = "mentions" | "privacy" | "terms";
+
 /**
  * Defaults — the API key comes from `.env.local` (`VITE_GROQ_API_KEY=…`,
  * gitignored) so the app works out of the box locally without committing any

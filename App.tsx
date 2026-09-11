@@ -1,19 +1,26 @@
-/** GeoLead Finder AI — main application shell and orchestration. */
+/**
+ * GeoLead Finder AI — application shell.
+ *
+ * Roles: landing (interactive globe) → tool (ranked results, no map) →
+ * legal pages (mentions légales, confidentialité, CGU) via a tiny hash router.
+ */
 
 import {
   Crosshair,
   Download,
   Loader2,
-  Map as MapIcon,
   Radar,
+  RotateCcw,
+  SlidersHorizontal,
   Trophy,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AuditDrawer } from "./AuditDrawer";
 import { CitySearch } from "./CitySearch";
 import { FiltersPanel } from "./FiltersPanel";
+import { Landing } from "./Landing";
+import { LegalPageView } from "./LegalPages";
 import { LeadsTable } from "./LeadsTable";
-import { MapView } from "./MapView";
 import { SettingsModal } from "./SettingsModal";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui";
@@ -21,14 +28,15 @@ import { AIAgentService, AiAgentError } from "./aiAgent";
 import { computeEnrichment } from "./enrichment";
 import { exportLeads } from "./export";
 import { lookupPlace } from "./places";
+import { navigateTo, useRouter } from "./router";
 import {
-  loadActiveView,
+  loadEntered,
   loadAiSettings,
   loadLeads,
   loadPlacesSettings,
   loadScanSummary,
   loadScans,
-  saveActiveView,
+  saveEntered,
   saveAiSettings,
   saveLeads,
   savePlacesSettings,
@@ -64,6 +72,11 @@ const DEFAULT_DIGITAL: DigitalFilters = {
 };
 
 export default function App() {
+  // ---- routing ----
+  const route = useRouter();
+  const [entered, setEntered] = useState<boolean>(() => loadEntered());
+  useEffect(() => saveEntered(entered), [entered]);
+
   // ---- persisted state ----
   const [aiSettings, setAiSettings] = useState<AiSettings>(() => loadAiSettings());
   const [placesSettings, setPlacesSettings] = useState<PlacesSettings>(() =>
@@ -84,18 +97,12 @@ export default function App() {
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
   const [auditingId, setAuditingId] = useState<string | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
-  /** Active main view: the ranked results page or the map (defaults to results when leads exist). */
-  const [activeView, setActiveView] = useState<"results" | "map">(() =>
-    loadLeads().length > 0 ? (loadActiveView() ?? "results") : "map",
-  );
-  useEffect(() => saveActiveView(activeView), [activeView]);
   /** Summary shown in the results header after a scan (persisted). */
   const [scanSummary, setScanSummary] = useState<ScanSummaryData | null>(() =>
     loadScanSummary(),
   );
-  const [settingsOpen, setSettingsOpen] = useState(false); // never auto-open: the key is preconfigured
-  const [fitToken, setFitToken] = useState(0);
-  const leadsRef = useRef<HTMLDivElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => saveScanSummary(scanSummary), [scanSummary]);
   useEffect(() => saveAiSettings(aiSettings), [aiSettings]);
@@ -237,8 +244,7 @@ export default function App() {
         capped,
       });
       setStatusMsg(null);
-      setActiveView("results"); // launch straight into the ranked results page
-      setFitToken((t) => t + 1);
+      setShowFilters(false);
     } catch (err) {
       setScanError(err instanceof Error ? err.message : String(err));
       setStatusMsg(null);
@@ -329,34 +335,65 @@ export default function App() {
     setStatusMsg(`${place.shortName} selected — ready to analyze.`);
   }, []);
 
-  const lowDigitalCount = sortedLeads.filter((l) => l.enrichment.priority !== "low").length;
+  // ---- routing render ----
+  if (route.role === "legal") {
+    return (
+      <div className="h-full w-full overflow-y-auto">
+        <LegalPageView page={route.page} onBack={() => navigateTo("#/")} />
+      </div>
+    );
+  }
 
+  if (!entered) {
+    return (
+      <div className="h-full w-full overflow-y-auto">
+        <Landing onEnter={() => setEntered(true)} />
+      </div>
+    );
+  }
+
+  // ---- tool ----
   return (
     <div className="bg-grid flex h-full w-full flex-col overflow-hidden">
       <TopBar
         stats={stats}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsOk={Boolean(aiSettings.apiKey)}
+        onHome={() => setEntered(false)}
       />
 
-      {/* Search + action bar — z-[900] keeps the autocomplete above the map (≤700) but below the drawer (1000) */}
-      <div className="relative z-[900] flex items-center gap-2 border-b border-surface-border bg-surface/80 px-4 py-2.5 backdrop-blur">
-        <Crosshair size={15} className="shrink-0 text-accent" />
-        <CitySearch
-          value={cityQuery}
-          onChange={setCityQuery}
-          onSelect={handleSelectPlace}
-          disabled={scanning}
-        />
-        <Button
-          variant="primary"
-          onClick={analyzeArea}
-          disabled={scanning || !selectedPlace}
-          title={selectedPlace ? `Analyze ${selectedPlace.shortName}` : "Pick a city first"}
-        >
-          {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
-          {scanning ? "Analyzing…" : "Analyze Area"}
-        </Button>
+      {/* Scan bar */}
+      <div className="border-b border-surface-border bg-surface/80 px-4 py-2.5 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-2">
+          <Crosshair size={15} className="shrink-0 text-accent" />
+          <CitySearch
+            value={cityQuery}
+            onChange={setCityQuery}
+            onSelect={handleSelectPlace}
+            disabled={scanning}
+          />
+          <Button
+            variant="primary"
+            onClick={analyzeArea}
+            disabled={scanning || !selectedPlace}
+            title={selectedPlace ? `Analyze ${selectedPlace.shortName}` : "Pick a city first"}
+          >
+            {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
+            {scanning ? "Analyzing…" : "Analyze Area"}
+          </Button>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors xl:hidden ${
+              showFilters
+                ? "border-accent/50 bg-accent/10 text-emerald-300"
+                : "border-surface-border text-slate-300 hover:border-slate-500"
+            }`}
+            title="Filters"
+          >
+            <SlidersHorizontal size={14} />
+            <span className="hidden sm:inline">Filters</span>
+          </button>
+        </div>
       </div>
 
       {statusMsg || scanError ? (
@@ -378,56 +415,11 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* Main view switcher — always visible, prominent */}
-      <div className="flex items-center gap-2 border-b border-surface-border bg-surface/80 px-4 py-2">
-        {(
-          [
-            {
-              id: "results" as const,
-              label: "Prospect Results",
-              count: lowDigitalCount,
-              icon: <Trophy size={14} />,
-            },
-            {
-              id: "map" as const,
-              label: "Map View",
-              count: sortedLeads.length,
-              icon: <MapIcon size={14} />,
-            },
-          ]
-        ).map((v) => (
-          <button
-            key={v.id}
-            onClick={() => setActiveView(v.id)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
-              activeView === v.id
-                ? "bg-accent/15 text-emerald-300 shadow-glow-sm ring-1 ring-accent/50"
-                : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-            }`}
-          >
-            {v.icon}
-            {v.label}
-            <span
-              className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ${
-                activeView === v.id ? "bg-accent/25 text-emerald-200" : "bg-slate-800 text-slate-500"
-              }`}
-            >
-              {v.count}
-            </span>
-          </button>
-        ))}
-        {scanSummary && activeView === "results" ? (
-          <span className="ml-auto hidden font-mono text-[10px] uppercase tracking-wider text-slate-500 md:inline">
-            scan completed · ranked by weakest digital presence
-          </span>
-        ) : null}
-      </div>
-
-      {/* ============ VIEW: RESULTS (full page) ============ */}
-      {activeView === "results" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* Big results banner */}
-          <div className="border-b border-surface-border bg-gradient-to-r from-accent/10 via-surface-raised to-surface-raised px-6 py-4">
+      {/* Results */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-6xl px-4 py-5">
+          {/* Results banner */}
+          <div className="rounded-xl border border-surface-border bg-gradient-to-r from-accent/10 via-surface-raised to-surface-raised px-5 py-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div className="min-w-0">
                 <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100">
@@ -452,7 +444,7 @@ export default function App() {
                   onClick={() => exportLeads(sortedLeads, "csv")}
                   disabled={sortedLeads.length === 0}
                 >
-                  <Download size={13} /> Export CSV
+                  <Download size={13} /> CSV
                 </Button>
                 <Button
                   onClick={() => exportLeads(sortedLeads, "json")}
@@ -460,58 +452,90 @@ export default function App() {
                 >
                   <Download size={13} /> JSON
                 </Button>
+                {leads.length > 0 ? (
+                  <Button
+                    variant="danger"
+                    title="Clear all scanned leads"
+                    onClick={() => {
+                      if (!window.confirm("Delete all scanned leads and results?")) return;
+                      setLeads([]);
+                      setScanSummary(null);
+                      setSelectedId(null);
+                      setDrawerLeadId(null);
+                    }}
+                  >
+                    <RotateCcw size={13} /> Reset
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
 
-          {/* Filters + full-width table */}
-          <div className="flex min-h-0 flex-1">
-            <div className="w-[250px] shrink-0 overflow-y-auto border-r border-surface-border bg-surface/60 px-4 py-3">
-              <h3 className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Filters
-              </h3>
-              <FiltersPanel
-                venueTypes={venueTypes}
-                digital={digital}
-                onVenueTypes={setVenueTypes}
-                onDigital={setDigital}
-              />
-              {scans.length > 0 ? (
-                <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-wider text-slate-600">
-                  Last scans:
-                  <br />
-                  {scans
-                    .slice(0, 3)
-                    .map((s) => `${s.city} (${s.totalFound})`)
-                    .join(", ")}
-                </p>
-              ) : null}
-            </div>
-            <div ref={leadsRef} className="min-w-0 flex-1">
+          {/* Filters + table */}
+          <div className="mt-4 flex items-start gap-5">
+            {/* Sidebar: sticky on desktop, collapsible on small screens */}
+            <aside
+              className={`${
+                showFilters
+                  ? "block w-full shrink-0"
+                  : "hidden"
+              } w-full xl:block xl:w-[260px] xl:shrink-0`}
+            >
+              <div className="xl:sticky xl:top-2 rounded-xl border border-surface-border bg-surface-raised/70 px-4 py-3">
+                <h3 className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Filters
+                </h3>
+                <FiltersPanel
+                  venueTypes={venueTypes}
+                  digital={digital}
+                  onVenueTypes={setVenueTypes}
+                  onDigital={setDigital}
+                />
+                {scans.length > 0 ? (
+                  <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-wider text-slate-600">
+                    Last scans:
+                    <br />
+                    {scans
+                      .slice(0, 3)
+                      .map((s) => `${s.city} (${s.totalFound})`)
+                      .join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            </aside>
+
+            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-surface-border bg-surface-raised/50">
               <LeadsTable
                 leads={sortedLeads}
                 selectedId={selectedId}
                 onSelect={focusLead}
-                onAudit={runAudit}
+                onAudit={(lead) => {
+                  focusLead(lead);
+                  openDrawer(lead);
+                  runAudit(lead);
+                }}
                 auditingId={auditingId}
               />
             </div>
           </div>
+
+          <p className="mx-auto mt-6 max-w-3xl text-center text-[11px] leading-relaxed text-slate-600">
+            Data © OpenStreetMap contributors (ODbL) — AI results are indicative and must be
+            verified before outreach. Use responsibly:{" "}
+            <a href="#/mentions-legales" className="underline decoration-slate-700 hover:text-accent">
+              legal notice
+            </a>{" "}
+            ·{" "}
+            <a href="#/confidentialite" className="underline decoration-slate-700 hover:text-accent">
+              privacy
+            </a>{" "}
+            ·{" "}
+            <a href="#/cgu" className="underline decoration-slate-700 hover:text-accent">
+              terms
+            </a>
+          </p>
         </div>
-      ) : (
-        /* ============ VIEW: MAP (full page) ============ */
-        <main className="relative min-h-0 w-full flex-1">
-          <MapView
-            leads={sortedLeads}
-            selectedId={selectedId}
-            onSelect={(lead) => {
-              focusLead(lead);
-              openDrawer(lead);
-            }}
-            fitToken={fitToken}
-          />
-        </main>
-      )}
+      </div>
 
       <AuditDrawer
         lead={drawerLead}
