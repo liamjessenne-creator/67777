@@ -8,23 +8,7 @@ import { priorityBadgeClass } from "./stats";
 function WebsiteStatus({ lead }: { lead: Lead }) {
   const { hasWebsite } = lead.enrichment.checks;
   const site = lead.venue.website;
-  // AI-discovered site (fed back into venue.website after an audit)
-  if (site && lead.audit?.website?.url === site) {
-    return (
-      <a
-        href={site}
-        target="_blank"
-        rel="noreferrer noopener"
-        onClick={(e) => e.stopPropagation()}
-        className={`inline-flex items-center gap-1 font-medium hover:underline ${
-          lead.audit.website.verified ? "text-emerald-400" : "text-sky-300"
-        }`}
-        title={`${site} — ${lead.audit.website.verified ? "trouvé et vérifié par l'IA" : "proposé par l'IA (non vérifié)"}`}
-      >
-        <Globe size={12} /> {lead.audit.website.verified ? "Site IA ✓" : "Site IA ?"}
-      </a>
-    );
-  }
+  // 1. OSM-recorded website — the authoritative source, always shown first
   if (hasWebsite && site) {
     return (
       <a
@@ -36,6 +20,25 @@ function WebsiteStatus({ lead }: { lead: Lead }) {
         title={site}
       >
         <Globe size={12} /> Website
+      </a>
+    );
+  }
+  // 2. AI-discovered site (from the audit) — verified (green, also persisted
+  //    into the lead) or to-confirm (amber, suggestion only)
+  if (lead.audit?.website) {
+    const ai = lead.audit.website;
+    return (
+      <a
+        href={ai.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        onClick={(e) => e.stopPropagation()}
+        className={`inline-flex items-center gap-1 font-medium hover:underline ${
+          ai.verified ? "text-emerald-400" : "text-amber-300"
+        }`}
+        title={`${ai.url} — ${ai.verified ? "site officiel trouvé et vérifié par l'IA" : "site proposé par l'IA, non vérifié — à confirmer avant de contacter"}`}
+      >
+        <Globe size={12} /> {ai.verified ? "Site IA ✓" : "Site IA ~"}
       </a>
     );
   }

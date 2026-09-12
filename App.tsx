@@ -270,9 +270,11 @@ export default function App() {
         setLeads((prev) =>
           prev.map((l) => {
             if (l.id !== lead.id) return l;
-            // Feed the AI-discovered website into the venue so the table shows a direct link
+            // Feed the AI-discovered website into the venue so the table shows a
+            // direct link — but ONLY when it was verified reachable, and never
+            // over an existing website record.
             const venue =
-              !l.venue.website && audit.website
+              !l.venue.website && audit.website?.verified
                 ? { ...l.venue, website: audit.website.url }
                 : l.venue;
             return { ...l, audit, venue, status: l.status === "contacted" ? "contacted" : "analyzed" };

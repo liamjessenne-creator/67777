@@ -62,6 +62,76 @@ export function extractJson<T>(text: string): T {
   throw new AiAgentError("Model JSON could not be parsed");
 }
 
+// ---------------------------------------------------------------------------
+// Website-discovery guardrails (anti-hallucination helpers)
+// ---------------------------------------------------------------------------
+
+const WEB_BLOCKLIST =
+  /facebook\.com|instagram\.com|tripadvisor|linktr\.ee|pagesjaunes|tiktok\.com|twitter\.com|x\.com|justeat|deliveroo|ubereats|thefork|lafourche|yelp\./;
+
+/** Strip accents/case/punctuation so names compare cleanly. */
+export function normalizeName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[''`]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Meaningful words of a venue name, minus filler articles. */
+export function nameTokens(name: string): string[] {
+  const FILLER = new Set([
+    "le", "la", "les", "l", "du", "de", "des", "au", "aux", "a", "chez",
+    "che", "the", "of", "and", "et", "bar", "cafe", "café", "restaurant",
+    "hotel", "snack", "pizza", "pizzeria", "brasserie", "bistrot", "bistro",
+    "local", "coin", "maison",
+  ]);
+  return normalizeName(name)
+    .split(" ")
+    .filter((w) => w.length > 2 && !FILLER.has(w));
+}
+
+/**
+ * Very generic venue names cannot be safely matched to a domain: whatever the
+ * model returns would most likely belong to a different business with the
+ * same (or a similar) common word in its name.
+ */
+export function isGenericVenueName(name: string): boolean {
+  return nameTokens(name).length === 0;
+}
+
+/**
+ * Reject "lookalike" domains: the model sometimes grabs a domain that merely
+ * CONTAINS the venue name as a substring of an unrelated brand ("Bell" →
+ * bell-food.com). A domain is plausible when one of these holds:
+ *   a) a distinctive token of the name appears as a whole word
+ *      ("Café Bouillet" → bouillet-lyon.fr);
+ *   b) the distinctive tokens glued together appear in the host
+ *      ("Au Petit Poisson Rouge" → aupetitpoissonrouge.fr);
+ *   c) a long (≥6 chars) distinctive token appears as a substring
+ *      ("Midori" → midoricafé.fr) — short tokens are never substrings
+ *      so "Belle" cannot match "belleville-pizza.fr".
+ */
+export function plausibleDomainForName(name: string, url: string): boolean {
+  const tokens = nameTokens(name);
+  if (tokens.length === 0) return false;
+  const bare = url
+    .replace(/^https?:\/\//i, "")
+    .split("/")[0]
+    .toLowerCase()
+    .replace(/\.(com|fr|net|eu|org|io|be|ch|de|co\.uk|co)$/, "");
+  // a) whole-word token
+  if (tokens.some((t) => new RegExp(`(^|[^a-z0-9])${t}([^a-z0-9]|$)`).test(bare))) return true;
+  // b) glued distinctive name
+  const glued = tokens.join("");
+  if (glued.length >= 6 && bare.includes(glued)) return true;
+  // c) long distinctive token as substring
+  if (tokens.some((t) => t.length >= 6 && bare.includes(t))) return true;
+  return false;
+}
+
 /**
  * Best-effort reachability probe for a cross-origin website. Browsers block
  * direct fetches to other origins, so we load a favicon-style image with a
@@ -69,6 +139,11 @@ export function extractJson<T>(text: string): T {
  */
 export function probeSite(url: string, timeoutMs = 6000): Promise<boolean> {
   return new Promise((resolve) => {
+    // Node / test environments have no Image constructor.
+    if (typeof Image === "undefined") {
+      resolve(false);
+      return;
+    }
     let settled = false;
     const done = (ok: boolean) => {
       if (settled) return;
@@ -91,8 +166,8 @@ const SYSTEM_AUDIT = `You are "AuditBot", a senior digital-presence consultant f
 You receive raw data about one venue. Your job: assess its digital footprint and produce a sales-oriented opportunity report for an agency selling web services.
 Rules:
 - Be concrete and quantitative; cite the numbers you were given.
-- If the data shows NO website, say it explicitly and quantify the impact.
-- If only a social page exists instead of a website, call it out.
+- The data comes from community-maintained OpenStreetMap and may be OUTDATED: a missing website, missing reviews or missing socials in the data does NOT prove the venue lacks them. Always phrase gaps as "not recorded in the data / to verify", never as certainties. If a website IS present in the data, acknowledge it and audit its likely quality instead of claiming it has none.
+- If only a social page is recorded instead of a website, call it out.
 - Never invent review counts, ratings, addresses or URLs that are not in the data.
 - If a field is unknown, work with what is present and flag it as "to verify".
 - Output language: match the venue's country (default English).
@@ -118,11 +193,12 @@ Rules:
 const SYSTEM_WEBFIND = `You are "WebFindBot", a research assistant that finds the official website of a food business.
 You receive raw venue data (name, address, phone, OSM website field if any).
 Rules:
-- Infer the most plausible official domain from the venue name (e.g. "Le Petit Bouchon" in Lyon -> lepetitbouchon.fr or lepetitbouchon-lyon.fr). Prefer the venue's country TLD.
-- NEVER return social networks (facebook.com, instagram.com, linktr.ee, tripadvisor...) as the website.
-- NEVER return directory pages (pagesjaunes, tripadvisor, lafourche...).
-- If you truly cannot infer a plausible official domain, return null.
-- Respond with ONLY a JSON object: {"website": "https://..." | null, "confidence": "high"|"low"}`;
+- You may propose the venue's likely official domain derived from its distinctive name on the venue's country TLD (e.g. "Le Petit Bouchon" in Lyon -> lepetitbouchon.fr).
+- Generic or very common venue names (e.g. "Le local", "Chez Grégoire", "Banette", "Le Bon beurre") almost always lead to WRONG domains owned by other businesses: return null for them.
+- NEVER return social networks (facebook.com, instagram.com, linktr.ee, tiktok.com, tripadvisor...) or directory/aggregator pages (pagesjaunes, tripadvisor, deliveroo, ubereats, justeat, thefork...) as the website.
+- If the venue already has a real website in the data, return null.
+- Rate confidence HONESTLY: "high" ONLY when you actually recall this specific business's website; "low" when you are merely inferring it from the name.
+- Respond with ONLY a JSON object: {"website": "https://..." | null, "confidence": "high"|"low"}.`;
 
 interface ChatOptions {
   jsonMode?: boolean;
@@ -287,33 +363,59 @@ export class AIAgentService {
   }
 
   /**
-   * AI Agent Function 4 — Website discovery.
-   * The LLM infers the most plausible official domain, then we verify it is
-   * actually reachable from the browser (cross-origin sites can't be fetched,
-   * so we probe by loading a favicon-style image with a timeout).
+   * AI Agent Function 4 — Website discovery (best-effort, anti-hallucination).
+   *
+   * Layers of protection against wrong websites:
+   *   1. skipped entirely when OSM already records a real website;
+   *   2. social/directory/aggregator domains are always rejected;
+   *   3. generic venue names ("Le local", "Midori"...) never get a domain —
+   *      the LLM is instructed to answer null, and we enforce it locally too;
+   *   4. the returned domain must contain a distinctive token of the venue
+   *      name ("Bell" → bell-food.com is rejected);
+   *   5. verified (green) = high AI confidence AND two consecutive live
+   *      probes; a plausible but lower-confidence candidate stays an amber,
+   *      clearly-labeled "to confirm" suggestion — never presented as fact.
    */
   async discoverWebsite(lead: Lead): Promise<{ url: string; verified: boolean } | null> {
+    // 1. The venue already has a real website — nothing to discover.
+    if (lead.enrichment.checks.hasWebsite && lead.venue.website) return null;
+    // Generic names can never be safely matched to a domain.
+    if (isGenericVenueName(lead.venue.name)) return null;
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: SYSTEM_WEBFIND },
+      {
+        role: "user",
+        content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\nFind the official website now (or null if not certain).`,
+      },
+    ];
     try {
-      const raw = await this.chat(
-        [
-          { role: "system", content: SYSTEM_WEBFIND },
-          {
-            role: "user",
-            content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\nFind the official website now.`,
-          },
-        ],
-        { jsonMode: true, timeoutMs: 20_000, maxTokens: 200 },
-      );
-      const parsed = extractJson<{ website?: unknown }>(raw);
+      let raw: string;
+      try {
+        raw = await this.chat(messages, {
+          jsonMode: true,
+          timeoutMs: 20_000,
+          maxTokens: 200,
+        });
+      } catch {
+        // Some providers (Groq) intermittently fail JSON mode with an empty
+        // generation; retry once in plain mode — extractJson tolerates prose
+        // wrapped around the JSON object.
+        raw = await this.chat(messages, { timeoutMs: 20_000, maxTokens: 300 });
+      }
+      const parsed = extractJson<{ website?: unknown; confidence?: unknown }>(raw);
       const url = typeof parsed.website === "string" ? parsed.website.trim() : "";
       if (!url || !/^https?:\/\//i.test(url)) return null;
 
-      // Never accept social/directory links as the official site
-      const u = url.toLowerCase();
-      if (/facebook\.com|instagram\.com|tripadvisor|linktr\.ee|pagesjaunes/.test(u)) {
-        return null;
-      }
-      const verified = await probeSite(url);
+      // 2. Never accept social/directory links as the official site.
+      if (WEB_BLOCKLIST.test(url.toLowerCase())) return null;
+      // 4. Domain must actually relate to the venue's distinctive name.
+      if (!plausibleDomainForName(lead.venue.name, url)) return null;
+
+      const confidence = parsed.confidence === "high" ? "high" : "low";
+      // 5. Verified = confident claim + two consecutive reachable probes.
+      const verified =
+        confidence === "high" && (await probeSite(url)) && (await probeSite(url));
       return { url, verified };
     } catch {
       return null; // website discovery is best-effort, never blocks the audit

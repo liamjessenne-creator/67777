@@ -86,12 +86,12 @@ export function AuditDrawer({
                 className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-medium transition-colors ${
                   lead.audit.website.verified
                     ? "border-accent/50 bg-accent/10 text-emerald-300 hover:bg-accent/20"
-                    : "border-sky-500/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
                 }`}
-                title={lead.audit.website.verified ? "Site vérifié accessible" : "Site proposé par l'IA (non vérifié)"}
+                title={lead.audit.website.verified ? "Site officiel vérifié accessible" : "Site proposé par l'IA, non vérifié — à confirmer avant de contacter"}
               >
                 <Globe size={11} />
-                {lead.audit.website.verified ? "Site web ✓" : "Site web ?"}
+                {lead.audit.website.verified ? "Site web ✓" : "Site web ~"}
                 <ExternalLink size={10} className="opacity-70" />
               </a>
             ) : (
