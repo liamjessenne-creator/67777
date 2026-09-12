@@ -1,6 +1,6 @@
 /** AI Opportunity Audit drawer. */
 
-import { Copy, ExternalLink, FileText, Globe, MessageSquare, RefreshCw, Target, X } from "lucide-react";
+import { Copy, ExternalLink, FileText, Gauge, Globe, MessageSquare, RefreshCw, Target, X } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { AiAudit, Lead } from "./types";
@@ -117,6 +117,76 @@ export function AuditDrawer({
             <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
               {error}
             </div>
+          ) : null}
+
+          {/* 0. Site quality check (when the venue already has a website) */}
+          {lead.siteAudit ? (
+            <section className="mb-6">
+              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <Gauge size={13} className="text-sky-400" /> Website Quality — Site Check
+              </h3>
+              <div className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide ${
+                      lead.siteAudit.verdict === "good"
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                        : lead.siteAudit.verdict === "improve"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          : "border-red-500/30 bg-red-500/10 text-red-400"
+                    }`}
+                  >
+                    {lead.siteAudit.verdict === "good"
+                      ? "Good site"
+                      : lead.siteAudit.verdict === "improve"
+                        ? "To improve"
+                        : "Critical"}
+                  </span>
+                  <a
+                    href={lead.siteAudit.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 truncate font-mono text-[11px] text-sky-300 hover:underline"
+                  >
+                    {lead.siteAudit.url} <ExternalLink size={10} />
+                  </a>
+                </div>
+                <p className="mt-2 text-[13px] leading-relaxed text-slate-300">
+                  {lead.siteAudit.summary}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-500">
+                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                    {lead.siteAudit.checks.https ? "HTTPS ✓" : "HTTPS ✗"}
+                  </span>
+                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                    {lead.siteAudit.checks.loadMs != null
+                      ? `${(lead.siteAudit.checks.loadMs / 1000).toFixed(1)}s`
+                      : "speed n/a"}
+                  </span>
+                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                    {lead.siteAudit.checks.contentReliable
+                      ? `${lead.siteAudit.checks.contentChars.toLocaleString()} chars read`
+                      : "content not readable"}
+                  </span>
+                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                    {lead.siteAudit.checks.hasContact ? "contact ✓" : "no contact info"}
+                  </span>
+                </div>
+                {lead.siteAudit.improvements.length > 0 ? (
+                  <ul className="mt-3 space-y-1.5">
+                    {lead.siteAudit.improvements.map((imp, i) => (
+                      <li key={i} className="flex gap-2 text-[13px] text-slate-300">
+                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-sky-400" />
+                        {imp}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="mt-3 font-mono text-[9px] uppercase tracking-wider text-slate-600">
+                  Checked {new Date(lead.siteAudit.generatedAt).toLocaleString()} · {lead.siteAudit.model}
+                </p>
+              </div>
+            </section>
           ) : null}
 
           {!audit && !auditing ? (

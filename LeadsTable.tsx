@@ -1,6 +1,6 @@
 /** Analytical lead table. */
 
-import { AlertTriangle, Facebook, Globe, Phone, SearchCheck } from "lucide-react";
+import { AlertTriangle, Facebook, Gauge, Globe, Phone, SearchCheck } from "lucide-react";
 import type { Lead } from "./types";
 import { VENUE_TYPE_LABELS } from "./types";
 import { priorityBadgeClass } from "./stats";
@@ -56,6 +56,25 @@ function WebsiteStatus({ lead }: { lead: Lead }) {
   );
 }
 
+/** Small colored verdict badge shown under a website link. */
+function SiteVerdictBadge({ lead }: { lead: Lead }) {
+  const sa = lead.siteAudit;
+  if (!sa) return null;
+  const spec = {
+    good: { cls: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10", label: "Good site" },
+    improve: { cls: "text-amber-400 border-amber-500/30 bg-amber-500/10", label: "To improve" },
+    critical: { cls: "text-red-400 border-red-500/30 bg-red-500/10", label: "Critical" },
+  }[sa.verdict];
+  return (
+    <span
+      className={`mt-0.5 inline-flex w-fit items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide ${spec.cls}`}
+      title={`${sa.summary} — checked ${new Date(sa.generatedAt).toLocaleString()}`}
+    >
+      <Gauge size={9} /> {spec.label}
+    </span>
+  );
+}
+
 const ROW_ACCENT: Record<string, string> = {
   high: "border-l-red-500/70",
   medium: "border-l-amber-400/60",
@@ -67,13 +86,17 @@ export function LeadsTable({
   selectedId,
   onSelect,
   onAudit,
+  onSiteCheck,
   auditingId,
+  siteCheckingId,
 }: {
   leads: Lead[];
   selectedId: string | null;
   onSelect: (lead: Lead) => void;
   onAudit: (lead: Lead) => void;
+  onSiteCheck: (lead: Lead) => void;
   auditingId: string | null;
+  siteCheckingId: string | null;
 }) {
   if (leads.length === 0) {
     return (
@@ -156,6 +179,7 @@ export function LeadsTable({
                 </td>
                 <td className="px-3 py-2">
                   <WebsiteStatus lead={lead} />
+                  <SiteVerdictBadge lead={lead} />
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
@@ -192,20 +216,41 @@ export function LeadsTable({
                   </span>
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(lead);
-                      onAudit(lead);
-                    }}
-                    disabled={auditingId === lead.id}
-                    className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 transition-all hover:bg-accent/20 hover:shadow-glow-sm disabled:opacity-50"
-                  >
-                    {auditingId === lead.id ? (
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-emerald-700 border-t-emerald-300" />
+                  <div className="flex items-center justify-end gap-1">
+                    {lead.enrichment.checks.hasWebsite && lead.venue.website ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(lead);
+                          onSiteCheck(lead);
+                        }}
+                        disabled={siteCheckingId === lead.id || auditingId === lead.id}
+                        className="inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-sky-300 transition-all hover:bg-sky-500/20 disabled:opacity-50"
+                        title="AI quality check of this existing website"
+                      >
+                        {siteCheckingId === lead.id ? (
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky-800 border-t-sky-300" />
+                        ) : (
+                          <Gauge size={10} />
+                        )}
+                        Site
+                      </button>
                     ) : null}
-                    Audit
-                  </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(lead);
+                        onAudit(lead);
+                      }}
+                      disabled={auditingId === lead.id}
+                      className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 transition-all hover:bg-accent/20 hover:shadow-glow-sm disabled:opacity-50"
+                    >
+                      {auditingId === lead.id ? (
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-emerald-700 border-t-emerald-300" />
+                      ) : null}
+                      Audit
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

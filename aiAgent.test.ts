@@ -65,8 +65,9 @@ describe("stripThinking", () => {
 });
 
 describe("probeSite", () => {
-  it("resolves false for an unreachable host", async () => {
-    const ok = await probeSite("https://does-not-exist-glf.invalid", 1500);
-    expect(ok).toBe(false);
+  it("resolves ok=false for an unreachable host", async () => {
+    const res = await probeSite("https://does-not-exist-glf.invalid", 1500);
+    expect(res.ok).toBe(false);
+    expect(res.loadMs).toBeNull();
   });
 }, 10_000);

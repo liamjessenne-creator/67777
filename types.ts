@@ -58,6 +58,8 @@ export interface Lead {
   enrichment: Enrichment;
   status: LeadStatus;
   audit?: AiAudit;
+  /** Result of the "site check" pass (quality of an EXISTING website). */
+  siteAudit?: SiteAudit;
   addedAt: string;
 }
 
@@ -69,6 +71,39 @@ export interface AiAudit {
   model: string;
   /** Official website discovered (and optionally verified) by the AI agent. */
   website: { url: string; verified: boolean } | null;
+}
+
+/**
+ * Technical checks gathered in the browser (no API key) for an existing
+ * website — fed to the AI together with the homepage text when reachable.
+ */
+export interface SiteChecks {
+  reachable: boolean;
+  https: boolean;
+  loadMs: number | null;
+  title: string | null;
+  contentChars: number;
+  /** Contact info (email/phone) findable on the homepage */
+  hasContact: boolean;
+  /** Social / delivery links present on the homepage */
+  hasSocialLinks: boolean;
+  /** false = page is JS-rendered or blocked the fetch → content unknown */
+  contentReliable: boolean;
+}
+
+export type SiteVerdict = "good" | "improve" | "critical";
+
+/** Result of the AI "site check" for a venue that already has a website. */
+export interface SiteAudit {
+  url: string;
+  checks: SiteChecks;
+  verdict: SiteVerdict;
+  /** 1–2 sentence explanation for the salesperson */
+  summary: string;
+  /** 3–5 concrete, sellable improvement actions */
+  improvements: string[];
+  generatedAt: string;
+  model: string;
 }
 
 export interface AiSettings {

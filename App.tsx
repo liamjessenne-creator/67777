@@ -8,13 +8,15 @@
 import {
   Crosshair,
   Download,
+  Gauge,
   Loader2,
   Radar,
   RotateCcw,
   SlidersHorizontal,
+  Square,
   Trophy,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuditDrawer } from "./AuditDrawer";
 import { CitySearch } from "./CitySearch";
 import { FiltersPanel } from "./FiltersPanel";
@@ -103,6 +105,16 @@ export default function App() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  /** Batch "site check" over venues that already have a website. */
+  const [siteScan, setSiteScan] = useState<{
+    active: boolean;
+    done: number;
+    total: number;
+    last: string | null;
+  }>({ active: false, done: 0, total: 0, last: null });
+  const stopSiteScanRef = useRef(false);
+  /** Lead currently undergoing a single-row site check. */
+  const [siteCheckingId, setSiteCheckingId] = useState<string | null>(null);
 
   useEffect(() => saveScanSummary(scanSummary), [scanSummary]);
   useEffect(() => saveAiSettings(aiSettings), [aiSettings]);
@@ -332,6 +344,71 @@ export default function App() {
     setAuditError(null);
   }, []);
 
+  /**
+   * Batch "site check": for every venue that ALREADY has a website, run
+   * browser-side technical checks + the SiteScanBot AI verdict. Sequential,
+   * stoppable, and each result is persisted as it lands.
+   */
+  const runSiteChecks = useCallback(async () => {
+    if (!aiSettings.apiKey || siteScan.active) return;
+    const targets = leads.filter((l) => l.enrichment.checks.hasWebsite && l.venue.website);
+    if (targets.length === 0) {
+      setStatusMsg("No business with an existing website in the current results.");
+      return;
+    }
+    stopSiteScanRef.current = false;
+    setSiteScan({ active: true, done: 0, total: targets.length, last: null });
+    setStatusMsg(`Site check running on ${targets.length} websites…`);
+
+    const agent = new AIAgentService(aiSettings);
+    let done = 0;
+    for (const lead of targets) {
+      if (stopSiteScanRef.current) break;
+      const audit = await agent.auditWebsiteQuality(lead);
+      done += 1;
+      if (audit) {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === lead.id ? { ...l, siteAudit: audit } : l)),
+        );
+      }
+      setSiteScan({
+        active: done < targets.length && !stopSiteScanRef.current,
+        done,
+        total: targets.length,
+        last: lead.venue.name,
+      });
+    }
+    setStatusMsg(null);
+  }, [aiSettings, leads, siteScan.active]);
+
+  const stopSiteChecks = useCallback(() => {
+    stopSiteScanRef.current = true;
+    setSiteScan((s) => ({ ...s, active: false }));
+  }, []);
+
+  /** Site check on a single row (per-row "SITE" button). */
+  const runSiteCheckOne = useCallback(
+    async (lead: Lead) => {
+      if (!aiSettings.apiKey || siteCheckingId) return;
+      setSiteCheckingId(lead.id);
+      try {
+        const agent = new AIAgentService(aiSettings);
+        const audit = await agent.auditWebsiteQuality(lead);
+        if (audit) {
+          setLeads((prev) =>
+            prev.map((l) => (l.id === lead.id ? { ...l, siteAudit: audit } : l)),
+          );
+          setDrawerLeadId(lead.id);
+        } else {
+          setAuditError("Site check failed — the website could not be reached.");
+        }
+      } finally {
+        setSiteCheckingId(null);
+      }
+    },
+    [aiSettings, siteCheckingId],
+  );
+
   const handleSelectPlace = useCallback((place: GeoPlace) => {
     setSelectedPlace(place);
     setStatusMsg(`${place.shortName} selected — ready to analyze.`);
@@ -441,7 +518,33 @@ export default function App() {
                   )}
                 </p>
               </div>
-              <div className="ml-auto flex gap-2">
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {siteScan.active ? (
+                  <Button variant="danger" onClick={stopSiteChecks}>
+                    <Square size={13} /> Stop ({siteScan.done}/{siteScan.total})
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    onClick={runSiteChecks}
+                    disabled={
+                      !aiSettings.apiKey ||
+                      !leads.some((l) => l.enrichment.checks.hasWebsite && l.venue.website)
+                    }
+                    title="Analyze the quality of existing websites (speed, HTTPS, content) with AI"
+                  >
+                    <Gauge size={13} />
+                    Site check
+                    {siteScan.total > 0 && !siteScan.active
+                      ? ` (${siteScan.done}/${siteScan.total})`
+                      : ""}
+                  </Button>
+                )}
+                {siteScan.last ? (
+                  <span className="font-mono text-[10px] text-slate-500">
+                    last: {siteScan.last}
+                  </span>
+                ) : null}
                 <Button
                   onClick={() => exportLeads(sortedLeads, "csv")}
                   disabled={sortedLeads.length === 0}
@@ -516,7 +619,12 @@ export default function App() {
                   openDrawer(lead);
                   runAudit(lead);
                 }}
+                onSiteCheck={(lead) => {
+                  focusLead(lead);
+                  runSiteCheckOne(lead);
+                }}
                 auditingId={auditingId}
+                siteCheckingId={siteCheckingId}
               />
             </div>
           </div>

@@ -3,7 +3,7 @@
  * endpoint (Groq by default, also DeepSeek/Qwen OpenAI-mode endpoints).
  */
 
-import type { AiAudit, AiSettings, Lead } from "./types";
+import type { AiAudit, AiSettings, Lead, SiteAudit, SiteChecks, SiteVerdict } from "./types";
 
 export class AiAgentError extends Error {
   constructor(
@@ -136,20 +136,25 @@ export function plausibleDomainForName(name: string, url: string): boolean {
  * Best-effort reachability probe for a cross-origin website. Browsers block
  * direct fetches to other origins, so we load a favicon-style image with a
  * timeout: if the server responds (even with a non-image), onLoad fires.
+ * Also measures response time — a slow site is a sellable problem.
  */
-export function probeSite(url: string, timeoutMs = 6000): Promise<boolean> {
+export function probeSite(
+  url: string,
+  timeoutMs = 6000,
+): Promise<{ ok: boolean; loadMs: number | null }> {
   return new Promise((resolve) => {
     // Node / test environments have no Image constructor.
     if (typeof Image === "undefined") {
-      resolve(false);
+      resolve({ ok: false, loadMs: null });
       return;
     }
     let settled = false;
+    const started = Date.now();
     const done = (ok: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(ok);
+      resolve({ ok, loadMs: ok ? Date.now() - started : null });
     };
     const timer = setTimeout(() => done(false), timeoutMs);
     const img = new Image();
@@ -160,6 +165,58 @@ export function probeSite(url: string, timeoutMs = 6000): Promise<boolean> {
     };
     img.src = `${url.replace(/\/+$/, "")}/favicon.ico?glf=${Date.now()}`;
   });
+}
+
+/**
+ * Browser-side technical checks for an EXISTING website: HTTPS, response
+ * time, and (best-effort) homepage text via a public reader proxy — direct
+ * fetches are blocked by CORS, but Jina's free r.jina.ai endpoint relays the
+ * page as plain text, which is enough to judge content quality. If the relay
+ * fails or the page is JS-rendered, content fields are marked unreliable and
+ * the AI judges on technical signals only.
+ */
+export async function fetchSiteChecks(
+  url: string,
+): Promise<SiteChecks & { excerpt: string | null }> {
+  const clean = url.replace(/\/+$/, "");
+  const { ok: reachable, loadMs } = await probeSite(clean);
+  const https = clean.toLowerCase().startsWith("https://");
+
+  const checks: SiteChecks & { excerpt: string | null } = {
+    reachable,
+    https,
+    loadMs,
+    title: null,
+    contentChars: 0,
+    hasContact: false,
+    hasSocialLinks: false,
+    contentReliable: false,
+    excerpt: null,
+  };
+  if (!reachable) return checks;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    const res = await fetch(`https://r.jina.ai/${clean}`, {
+      signal: controller.signal,
+      headers: { Accept: "text/plain" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return checks;
+    const text = (await res.text()).trim();
+    if (text.length < 80) return checks; // relay error page, not real content
+
+    checks.title = text.split("\n").find((l) => l.startsWith("Title:"))?.slice(6).trim() ?? null;
+    checks.contentChars = text.length;
+    checks.contentReliable = true;
+    checks.excerpt = text.slice(0, 2500);
+    checks.hasContact = /([\w.+-]+@[\w-]+\.[\w.]+)|(^|\D)(\+33|\b0\d[ .-]?\d{2})/m.test(text);
+    checks.hasSocialLinks = /facebook\.com|instagram\.com|tripadvisor|deliveroo|ubereats|justeat/i.test(text);
+  } catch {
+    // relay unavailable / slow site — keep technical-only checks
+  }
+  return checks;
 }
 
 const SYSTEM_AUDIT = `You are "AuditBot", a senior digital-presence consultant for independent food businesses (restaurants, snacks, kebabs, pizzerias, cafés).
@@ -199,6 +256,15 @@ Rules:
 - If the venue already has a real website in the data, return null.
 - Rate confidence HONESTLY: "high" ONLY when you actually recall this specific business's website; "low" when you are merely inferring it from the name.
 - Respond with ONLY a JSON object: {"website": "https://..." | null, "confidence": "high"|"low"}.`;
+
+const SYSTEM_SITESCAN = `You are "SiteScanBot", a web consultant who judges the quality of a small business's EXISTING website to find concrete, sellable improvement work.
+You receive: the site URL, raw browser-side technical checks (reachable, HTTPS, load time, homepage text stats, contact/social presence), and optionally an excerpt of the homepage text.
+Rules:
+- Judge ONLY on the provided evidence. If contentReliable is false, say the content could not be inspected and base the verdict on technical signals alone — never invent content problems.
+- verdict: "good" = modern, fast, informative site — little to sell; "improve" = works but has clear gaps (slow, no mobile menu evidence, thin content, no contact info, no socials, outdated info); "critical" = barely exists as a sales tool (unreachable, very slow >5s, no HTTPS, near-empty or broken page).
+- improvements: exactly 3 to 5 CONCRETE actions an agency could be paid for (e.g. "Enable HTTPS certificate", "Compress hero image to cut 3.2s load time", "Add click-to-call phone number and booking link", "Rewrite homepage with menu, hours, reviews"). No generic fluff like "improve SEO".
+- If the checks show nothing wrong, say so honestly — a good verdict builds trust too.
+- Respond with ONLY a JSON object: {"verdict": "good"|"improve"|"critical", "summary": "1-2 sentences for the salesperson", "improvements": ["...", ...]}`;
 
 interface ChatOptions {
   jsonMode?: boolean;
@@ -414,11 +480,86 @@ export class AIAgentService {
 
       const confidence = parsed.confidence === "high" ? "high" : "low";
       // 5. Verified = confident claim + two consecutive reachable probes.
-      const verified =
-        confidence === "high" && (await probeSite(url)) && (await probeSite(url));
+      const first = await probeSite(url);
+      const verified = confidence === "high" && first.ok && (await probeSite(url)).ok;
       return { url, verified };
     } catch {
       return null; // website discovery is best-effort, never blocks the audit
+    }
+  }
+
+  /**
+   * AI Agent Function 5 — Site quality check for a venue that ALREADY has a
+   * website. Browser-side technical checks first, homepage text (best-effort,
+   * via a public reader relay) when reachable, then the LLM produces a verdict
+   * and a list of sellable improvements. Returns null when the site cannot be
+   * probed at all or the model output is unusable — never throws.
+   */
+  async auditWebsiteQuality(lead: Lead): Promise<SiteAudit | null> {
+    const url = lead.venue.website;
+    if (!url || !lead.enrichment.checks.hasWebsite) return null;
+
+    try {
+      const { excerpt, ...checks } = await fetchSiteChecks(url);
+      if (!checks.reachable) return null;
+
+      const payload = JSON.stringify({
+        url,
+        technical_checks: {
+          reachable: checks.reachable,
+          https: checks.https,
+          load_time_ms: checks.loadMs,
+          homepage_title: checks.title,
+          homepage_text_chars: checks.contentChars,
+          contact_info_visible: checks.hasContact,
+          social_links_present: checks.hasSocialLinks,
+          content_inspectable: checks.contentReliable,
+        },
+        homepage_excerpt: excerpt ?? undefined,
+      });
+
+      const messages: ChatMessage[] = [
+        { role: "system", content: SYSTEM_SITESCAN },
+        { role: "user", content: `Site data:\n${payload}\n\nJudge the site quality now.` },
+      ];
+
+      let raw: string;
+      try {
+        raw = await this.chat(messages, { jsonMode: true, timeoutMs: 30_000, maxTokens: 500 });
+      } catch {
+        // Groq intermittently fails JSON mode — retry in plain mode.
+        raw = await this.chat(messages, { timeoutMs: 30_000, maxTokens: 700 });
+      }
+      const parsed = extractJson<{
+        verdict?: unknown;
+        summary?: unknown;
+        improvements?: unknown;
+      }>(raw);
+
+      const verdict: SiteVerdict =
+        parsed.verdict === "good" || parsed.verdict === "critical" ? parsed.verdict : "improve";
+      const summary =
+        typeof parsed.summary === "string" && parsed.summary.trim()
+          ? parsed.summary.trim()
+          : "Website quality assessment based on technical checks.";
+      const improvements = Array.isArray(parsed.improvements)
+        ? parsed.improvements
+            .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+            .map((s) => s.trim())
+            .slice(0, 5)
+        : [];
+
+      return {
+        url,
+        checks,
+        verdict,
+        summary,
+        improvements,
+        generatedAt: new Date().toISOString(),
+        model: this.settings.model,
+      };
+    } catch {
+      return null; // site check is best-effort, never blocks the flow
     }
   }
 
