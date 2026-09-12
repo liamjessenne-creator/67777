@@ -8,8 +8,15 @@ import { resolveVenueType } from "./types";
 import type { GeoPlace } from "./nominatim";
 import { bboxString } from "./nominatim";
 
+/**
+ * Public Overpass mirrors, tried in order. The two main mirrors shed load
+ * under burst traffic (429/504), so we keep an independent fallback and
+ * retry each mirror with linear backoff before moving on. Order matters:
+ * private.coffee proved the most resilient during the 2026-09 overload.
+ */
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
 ];
 
@@ -118,25 +125,35 @@ export async function queryVenues(
   const query = buildQuery(place, opts.types ?? AMENITIES);
   const errors: string[] = [];
 
-  /** Public mirrors shed load with 429/504 on bursty queries — retry each once after a pause. */
+  /** Public mirrors shed load with 429/502/503/504 on bursty queries. */
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const RETRYABLE = new Set([429, 502, 503, 504]);
+  const MAX_ATTEMPTS = 2;
+  /** Cap each attempt so a hung mirror cannot stall the scan (observed: 48 s). */
+  const PER_ATTEMPT_TIMEOUT_MS = 25_000;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const host = new URL(endpoint).hostname;
+      // Link the caller's abort signal with our per-attempt timeout.
+      const controller = new AbortController();
+      const onOuterAbort = () => controller.abort();
+      opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
+      const timer = setTimeout(() => controller.abort(), PER_ATTEMPT_TIMEOUT_MS);
       try {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ data: query }).toString(),
-          signal: opts.signal,
+          signal: controller.signal,
         });
         if (!res.ok) {
-          errors.push(`${new URL(endpoint).hostname} → HTTP ${res.status}${attempt === 0 ? " (retrying)" : ""}`);
-          if (res.status === 429 || res.status === 504) {
-            await sleep(2500);
+          errors.push(`${host} → HTTP ${res.status}${attempt < MAX_ATTEMPTS ? " (retrying)" : ""}`);
+          if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS) {
+            await sleep(2500 * attempt); // 2.5s
             continue;
           }
-          break;
+          break; // non-retryable (or attempts exhausted) → next mirror
         }
         const json = (await res.json()) as OverpassResponse;
         const venues: Venue[] = [];
@@ -149,11 +166,27 @@ export async function queryVenues(
           }
         }
         venues.sort((a, b) => a.name.localeCompare(b.name));
-        return { venues, endpointUsed: new URL(endpoint).hostname };
+        return { venues, endpointUsed: host };
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") throw err;
-        errors.push(`${new URL(endpoint).hostname} → ${err instanceof Error ? err.message : err}`);
+        // A user-triggered abort must propagate; our own timeout is retryable.
+        if (opts.signal?.aborted) {
+          throw new DOMException("Aborted", "AbortError");
+        }
+        const msg =
+          err instanceof DOMException && err.name === "AbortError"
+            ? `timeout after ${PER_ATTEMPT_TIMEOUT_MS / 1000}s`
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        errors.push(`${host} → ${msg}${attempt < MAX_ATTEMPTS ? " (retrying)" : ""}`);
+        if (attempt < MAX_ATTEMPTS) {
+          await sleep(2500 * attempt);
+          continue;
+        }
         break;
+      } finally {
+        clearTimeout(timer);
+        opts.signal?.removeEventListener("abort", onOuterAbort);
       }
     }
   }

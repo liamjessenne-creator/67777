@@ -13,7 +13,6 @@ const KEYS = {
   lastCity: "glf.lastCity",
   scanSummary: "glf.scanSummary",
   activeView: "glf.activeView",
-  entered: "glf.entered",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -115,11 +114,3 @@ export function clearAllData(): void {
   }
 }
 
-/** Landing → tool gate: remember that the user already entered the tool. */
-export function loadEntered(): boolean {
-  return read<boolean>(KEYS.entered, false);
-}
-
-export function saveEntered(v: boolean): void {
-  write(KEYS.entered, v);
-}

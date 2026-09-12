@@ -32,13 +32,11 @@ import { exportLeads } from "./export";
 import { lookupPlace } from "./places";
 import { navigateTo, useRouter } from "./router";
 import {
-  loadEntered,
   loadAiSettings,
   loadLeads,
   loadPlacesSettings,
   loadScanSummary,
   loadScans,
-  saveEntered,
   saveAiSettings,
   saveLeads,
   savePlacesSettings,
@@ -76,8 +74,9 @@ const DEFAULT_DIGITAL: DigitalFilters = {
 export default function App() {
   // ---- routing ----
   const route = useRouter();
-  const [entered, setEntered] = useState<boolean>(() => loadEntered());
-  useEffect(() => saveEntered(entered), [entered]);
+  // The landing page (interactive globe) always shows first on each visit;
+  // "Launch the tool" or clicking the globe enters the tool for the session.
+  const [entered, setEntered] = useState(false);
 
   // ---- persisted state ----
   const [aiSettings, setAiSettings] = useState<AiSettings>(() => loadAiSettings());
