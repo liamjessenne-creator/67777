@@ -113,14 +113,14 @@ export function LeadsTable({
         <thead className="sticky top-0 z-10 bg-surface-raised font-mono text-[10px] uppercase tracking-[0.15em] text-slate-500">
           <tr>
             <th className="w-8 px-2 py-2 text-right font-semibold text-slate-600">#</th>
-            <th className="px-3 py-2 font-semibold">Name</th>
-            <th className="px-3 py-2 font-semibold">Category</th>
-            <th className="px-3 py-2 font-semibold">Phone</th>
-            <th className="px-3 py-2 font-semibold">Reviews</th>
-            <th className="px-3 py-2 font-semibold">Website</th>
-            <th className="px-3 py-2 font-semibold">Score</th>
-            <th className="px-3 py-2 font-semibold">Status</th>
-            <th className="px-3 py-2 text-right font-semibold">Actions</th>
+            <th className="px-2 py-2 font-semibold xl:px-3">Name</th>
+            <th className="hidden px-3 py-2 font-semibold md:table-cell">Category</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Phone</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Reviews</th>
+            <th className="px-2 py-2 font-semibold xl:px-3">Website</th>
+            <th className="px-2 py-2 font-semibold xl:px-3">Score</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Status</th>
+            <th className="px-2 py-2 text-right font-semibold xl:px-3">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -144,16 +144,16 @@ export function LeadsTable({
                 <td className={`border-l-2 px-2 py-2 text-right font-mono text-[10px] text-slate-600 ${ROW_ACCENT[priority]}`}>
                   {i + 1}
                 </td>
-                <td className="max-w-[200px] px-3 py-2">
+                <td className="max-w-[140px] px-2 py-2 sm:max-w-[200px] xl:px-3">
                   <div className="truncate font-medium text-slate-100">{lead.venue.name}</div>
                   <div className="truncate font-mono text-[10px] text-slate-500">
                     {lead.venue.address}
                   </div>
                 </td>
-                <td className="px-3 py-2 text-slate-400">
+                <td className="hidden px-3 py-2 text-slate-400 md:table-cell">
                   {VENUE_TYPE_LABELS[lead.venue.venueType]}
                 </td>
-                <td className="px-3 py-2">
+                <td className="hidden px-3 py-2 lg:table-cell">
                   {lead.venue.phone ? (
                     <a
                       href={`tel:${lead.venue.phone.replace(/\s/g, "")}`}
@@ -166,7 +166,7 @@ export function LeadsTable({
                     <span className="text-slate-600">—</span>
                   )}
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-slate-400">
+                <td className="hidden px-3 py-2 font-mono text-[11px] text-slate-400 lg:table-cell">
                   {checks.rating != null ? (
                     <span>
                       ★ {checks.rating.toFixed(1)} · {checks.reviewCount ?? "?"}
@@ -177,13 +177,13 @@ export function LeadsTable({
                     <span className="text-slate-600">unknown</span>
                   )}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-2 xl:px-3">
                   <WebsiteStatus lead={lead} />
                   <SiteVerdictBadge lead={lead} />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-2 xl:px-3">
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-14 overflow-hidden rounded-full bg-slate-700">
+                    <div className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-700 sm:block sm:w-14">
                       <div
                         className={`h-full rounded-full ${
                           priority === "high"
@@ -202,7 +202,7 @@ export function LeadsTable({
                     </span>
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td className="hidden px-3 py-2 lg:table-cell">
                   <span
                     className={`font-mono text-[10px] uppercase tracking-wide ${
                       lead.status === "contacted"
@@ -215,8 +215,8 @@ export function LeadsTable({
                     {lead.status}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right">
-                  <div className="flex items-center justify-end gap-1">
+                <td className="px-2 py-2 text-right xl:px-3">
+                  <div className="flex flex-wrap items-center justify-end gap-1">
                     {lead.enrichment.checks.hasWebsite && lead.venue.website ? (
                       <button
                         onClick={(e) => {
