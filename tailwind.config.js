@@ -17,15 +17,27 @@ export default {
         },
       },
       fontFamily: {
+        // Corps d'interface : Manrope — géométrique, très lisible en petit corps.
         sans: [
-          "Inter",
+          "Manrope Variable",
+          "Manrope",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
           "Segoe UI",
           "sans-serif",
         ],
+        // Titres / marque : Sora — dessin large et technique, accordé au fond chrome.
+        display: [
+          "Sora Variable",
+          "Sora",
+          "Manrope Variable",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
         mono: [
+          "JetBrains Mono Variable",
           "JetBrains Mono",
           "ui-monospace",
           "SFMono-Regular",

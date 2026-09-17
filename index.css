@@ -12,6 +12,16 @@ body,
   height: 100%;
 }
 
+/* Titres et marque : Sora — typographie large assortie au fond « chrome ». */
+h1,
+h2,
+h3,
+h4,
+.font-display {
+  font-family: "Sora Variable", "Sora", "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
 body {
   @apply bg-surface font-sans text-slate-200 antialiased;
   /* FIX (UI) : base sombre accordée au fond ChromeCells (#040405). */

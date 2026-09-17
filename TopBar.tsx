@@ -1,6 +1,6 @@
-/** Top navigation bar: brand, system status, quick stats, settings. */
+/** Barre supérieure : marque, état du service, statistiques, réglages. */
 
-import { Settings, Sparkles } from "lucide-react";
+import { Settings, Store } from "lucide-react";
 import type { Stats } from "./stats";
 import { StatChip } from "./ui";
 
@@ -16,54 +16,59 @@ export function TopBar({
   onHome?: () => void;
 }) {
   return (
-    <header className="flex items-center gap-4 border-b border-surface-border bg-surface-raised/90 px-4 py-2.5 backdrop-blur">
+    <header className="flex items-center gap-4 border-b border-white/10 bg-slate-950/70 px-4 py-2.5 backdrop-blur-md">
       <button
         onClick={onHome}
-        className="flex items-center gap-2.5 text-left"
-        title={onHome ? "Back to home" : undefined}
+        className="flex shrink-0 items-center gap-2.5 text-left"
+        title={onHome ? "Retour à l'accueil" : undefined}
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent/25 to-accent/5 text-accent shadow-glow-sm ring-1 ring-accent/30">
-          <Sparkles size={16} />
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-accent">
+          <Store size={16} />
         </span>
         <div className="leading-tight">
-          <h1 className="bg-gradient-to-r from-emerald-300 via-emerald-400 to-emerald-200 bg-clip-text text-sm font-bold tracking-tight text-transparent">
-            GeoLead Finder AI
+          <h1 className="font-display whitespace-nowrap bg-gradient-to-b from-white via-slate-200 to-slate-400 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent">
+            GeoLead Finder
           </h1>
-          <p className="font-mono text-[9px] uppercase tracking-[0.25em] text-slate-500">
-            Internal Audit Tool
+          <p className="hidden font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500 sm:block">
+            Prospection locale
           </p>
         </div>
       </button>
 
-      {/* System status pill */}
+      {/* État du service */}
       <span
         className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider sm:inline-flex ${
           settingsOk
             ? "border-accent/40 bg-accent/10 text-emerald-300"
             : "border-amber-500/50 bg-amber-500/10 text-amber-300"
         }`}
-        title={settingsOk ? "LLM endpoint linked" : "Configure a key in Settings"}
+        title={
+          settingsOk
+            ? "Modèle d'analyse connecté"
+            : "Ajoutez une clé API dans les réglages pour lancer les analyses"
+        }
       >
         <span
           className={`h-1.5 w-1.5 rounded-full ${
-            settingsOk
-              ? "animate-pulse bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
-              : "bg-amber-400"
+            settingsOk ? "bg-emerald-400" : "bg-amber-400"
           }`}
         />
-        {settingsOk ? "System online" : "No key"}
+        {settingsOk ? "Connecté" : "Clé manquante"}
       </span>
 
-      <div className="ml-auto flex items-center gap-2">
-        <StatChip label="Analyzed" value={stats.totalAnalyzed} tone="slate" />
-        <StatChip label="Targets" value={stats.highPriority} tone="red" />
-        <StatChip label="Qualified" value={stats.qualifiedLeads} tone="emerald" />
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        <StatChip label="Analysés" value={stats.totalAnalyzed} tone="slate" />
+        {/* Sur écran étroit, seuls les indicateurs essentiels restent visibles. */}
+        <span className="hidden items-center gap-2 md:flex">
+          <StatChip label="Cibles" value={stats.highPriority} tone="red" />
+          <StatChip label="Qualifiés" value={stats.qualifiedLeads} tone="emerald" />
+        </span>
         <button
           onClick={onOpenSettings}
-          title="Settings"
-          className={`rounded-lg border p-2 transition-all hover:shadow-glow-sm ${
+          title="Réglages"
+          className={`shrink-0 rounded-lg border p-2 transition-colors ${
             settingsOk
-              ? "border-surface-border text-slate-400 hover:text-accent"
+              ? "border-white/10 text-slate-400 hover:text-accent"
               : "border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
           }`}
         >

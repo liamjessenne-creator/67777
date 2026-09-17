@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Facebook, Gauge, Globe, Phone, SearchCheck } from "lucide-react";
 import type { Lead } from "./types";
-import { VENUE_TYPE_LABELS } from "./types";
+import { LEAD_STATUS_LABELS, VENUE_TYPE_LABELS } from "./types";
 import { priorityBadgeClass } from "./stats";
 
 function WebsiteStatus({ lead }: { lead: Lead }) {
@@ -19,39 +19,45 @@ function WebsiteStatus({ lead }: { lead: Lead }) {
         className="inline-flex items-center gap-1 text-emerald-400 hover:underline"
         title={site}
       >
-        <Globe size={12} /> Website
+        <Globe size={12} /> Site web
       </a>
     );
   }
-  // 2. AI-discovered site (from the audit) — verified (green, also persisted
-  //    into the lead) or to-confirm (amber, suggestion only)
+  // 2. Site repéré lors de l'analyse — vérifié (vert) ou à confirmer (ambre)
   if (lead.audit?.website) {
-    const ai = lead.audit.website;
+    const found = lead.audit.website;
     return (
       <a
-        href={ai.url}
+        href={found.url}
         target="_blank"
         rel="noreferrer noopener"
         onClick={(e) => e.stopPropagation()}
         className={`inline-flex items-center gap-1 font-medium hover:underline ${
-          ai.verified ? "text-emerald-400" : "text-amber-300"
+          found.verified ? "text-emerald-400" : "text-amber-300"
         }`}
-        title={`${ai.url} — ${ai.verified ? "site officiel trouvé et vérifié par l'IA" : "site proposé par l'IA, non vérifié — à confirmer avant de contacter"}`}
+        title={`${found.url} — ${
+          found.verified
+            ? "site officiel trouvé et vérifié (accessible)"
+            : "site proposé, non vérifié — à confirmer avant de contacter"
+        }`}
       >
-        <Globe size={12} /> {ai.verified ? "Site IA ✓" : "Site IA ~"}
+        <Globe size={12} /> {found.verified ? "Site vérifié" : "Site à confirmer"}
       </a>
     );
   }
   if (site) {
     return (
-      <span className="inline-flex items-center gap-1 text-slate-500" title={`${site} (social page only)`}>
-        <Facebook size={12} /> Social only
+      <span
+        className="inline-flex items-center gap-1 text-slate-500"
+        title={`${site} (page de réseau social uniquement)`}
+      >
+        <Facebook size={12} /> Réseau social
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-red-400" title="No website recorded">
-      <AlertTriangle size={12} /> None
+    <span className="inline-flex items-center gap-1 text-red-400" title="Aucun site enregistré">
+      <AlertTriangle size={12} /> Aucun
     </span>
   );
 }
@@ -61,14 +67,14 @@ function SiteVerdictBadge({ lead }: { lead: Lead }) {
   const sa = lead.siteAudit;
   if (!sa) return null;
   const spec = {
-    good: { cls: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10", label: "Good site" },
-    improve: { cls: "text-amber-400 border-amber-500/30 bg-amber-500/10", label: "To improve" },
-    critical: { cls: "text-red-400 border-red-500/30 bg-red-500/10", label: "Critical" },
+    good: { cls: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10", label: "Bon site" },
+    improve: { cls: "text-amber-400 border-amber-500/30 bg-amber-500/10", label: "À améliorer" },
+    critical: { cls: "text-red-400 border-red-500/30 bg-red-500/10", label: "Critique" },
   }[sa.verdict];
   return (
     <span
       className={`mt-0.5 inline-flex w-fit items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide ${spec.cls}`}
-      title={`${sa.summary} — checked ${new Date(sa.generatedAt).toLocaleString()}`}
+      title={`${sa.summary} — contrôlé le ${new Date(sa.generatedAt).toLocaleString()}`}
     >
       <Gauge size={9} /> {spec.label}
     </span>
@@ -102,7 +108,7 @@ export function LeadsTable({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-slate-500">
         <SearchCheck size={28} className="text-slate-700" />
-        No leads match the current filters.
+        Aucun commerce ne correspond aux filtres actuels.
       </div>
     );
   }
@@ -110,16 +116,16 @@ export function LeadsTable({
   return (
     <div className="h-full overflow-auto">
       <table className="w-full border-collapse text-left text-[13px]">
-        <thead className="sticky top-0 z-10 bg-surface-raised font-mono text-[10px] uppercase tracking-[0.15em] text-slate-500">
+        <thead className="sticky top-0 z-10 bg-slate-950/85 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-500 backdrop-blur">
           <tr>
             <th className="w-8 px-2 py-2 text-right font-semibold text-slate-600">#</th>
-            <th className="px-2 py-2 font-semibold xl:px-3">Name</th>
-            <th className="hidden px-3 py-2 font-semibold md:table-cell">Category</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Phone</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Reviews</th>
-            <th className="px-2 py-2 font-semibold xl:px-3">Website</th>
+            <th className="px-2 py-2 font-semibold xl:px-3">Nom</th>
+            <th className="hidden px-3 py-2 font-semibold md:table-cell">Catégorie</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Téléphone</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Avis</th>
+            <th className="px-2 py-2 font-semibold xl:px-3">Site web</th>
             <th className="px-2 py-2 font-semibold xl:px-3">Score</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Status</th>
+            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Statut</th>
             <th className="px-2 py-2 text-right font-semibold xl:px-3">Actions</th>
           </tr>
         </thead>
@@ -174,7 +180,7 @@ export function LeadsTable({
                   ) : checks.reviewCount != null ? (
                     <span>~{checks.reviewCount}+</span>
                   ) : (
-                    <span className="text-slate-600">unknown</span>
+                    <span className="text-slate-600">inconnu</span>
                   )}
                 </td>
                 <td className="px-2 py-2 xl:px-3">
@@ -212,7 +218,7 @@ export function LeadsTable({
                           : "text-slate-500"
                     }`}
                   >
-                    {lead.status}
+                    {LEAD_STATUS_LABELS[lead.status]}
                   </span>
                 </td>
                 <td className="px-2 py-2 text-right xl:px-3">
@@ -226,7 +232,7 @@ export function LeadsTable({
                         }}
                         disabled={siteCheckingId === lead.id || auditingId === lead.id}
                         className="inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-sky-300 transition-all hover:bg-sky-500/20 disabled:opacity-50"
-                        title="AI quality check of this existing website"
+                        title="Contrôler la qualité de ce site (vitesse, HTTPS, contenu)"
                       >
                         {siteCheckingId === lead.id ? (
                           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky-800 border-t-sky-300" />
@@ -243,12 +249,13 @@ export function LeadsTable({
                         onAudit(lead);
                       }}
                       disabled={auditingId === lead.id}
-                      className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 transition-all hover:bg-accent/20 hover:shadow-glow-sm disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 transition-colors hover:bg-accent/20 disabled:opacity-50"
+                      title="Analyser la fiche de ce commerce"
                     >
                       {auditingId === lead.id ? (
                         <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-emerald-700 border-t-emerald-300" />
                       ) : null}
-                      Audit
+                      Analyser
                     </button>
                   </div>
                 </td>

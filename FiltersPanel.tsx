@@ -30,21 +30,21 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Venue types
+            Types de commerce
           </span>
           <div className="flex gap-1">
             <button
               onClick={() => setAll(true)}
               className="text-[10px] text-slate-500 hover:text-accent"
             >
-              all
+              tous
             </button>
             <span className="text-[10px] text-slate-700">/</span>
             <button
               onClick={() => setAll(false)}
               className="text-[10px] text-slate-500 hover:text-accent"
             >
-              none
+              aucun
             </button>
           </div>
         </div>
@@ -72,7 +72,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
 
       <div className="border-t border-surface-border pt-3">
         <span className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-          Digital footprint threshold
+          Seuil de présence numérique
         </span>
         <div className="space-y-1.5">
           <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
@@ -82,7 +82,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
               onChange={(e) => onDigital({ ...digital, noWebsiteOnly: e.target.checked })}
               className="h-3.5 w-3.5 accent-emerald-500"
             />
-            No real website
+            Sans site web réel
           </label>
           <div className="flex items-center gap-2 text-xs text-slate-300">
             <input
@@ -107,7 +107,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
               disabled={digital.maxReviews == null}
               className="w-16 rounded border border-surface-border bg-surface-raised px-1.5 py-0.5 text-xs text-slate-200 disabled:opacity-40"
             />
-            <span>Google reviews</span>
+            <span>avis Google</span>
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
             <input
@@ -116,27 +116,27 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
               onChange={(e) => onDigital({ ...digital, highPriorityOnly: e.target.checked })}
               className="h-3.5 w-3.5 accent-emerald-500"
             />
-            High-priority targets only (score &lt; 40)
+            Cibles prioritaires uniquement (score &lt; 40)
           </label>
         </div>
       </div>
 
       <div className="border-t border-surface-border pt-3">
         <span className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-          Priority legend
+          Légende
         </span>
         <ul className="space-y-1 text-[11px] text-slate-400">
           <li className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.55)]" />
-            Red — high prospect priority
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
+            Rouge — cible prioritaire
           </li>
           <li className="flex items-center gap-2">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
-            Yellow — medium prospect priority
+            Jaune — priorité moyenne
           </li>
           <li className="flex items-center gap-2">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            Green — strong digital presence (disqualified)
+            Vert — présence numérique solide (à écarter)
           </li>
         </ul>
       </div>
@@ -149,7 +149,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
         }
         className="w-full justify-center"
       >
-        Reset to prospect preset
+        Réappliquer le préréglage prospection
       </Button>
     </div>
   );

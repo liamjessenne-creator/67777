@@ -184,12 +184,19 @@ export interface DigitalFilters {
 export type MapPinColor = "red" | "yellow" | "green";
 
 export const VENUE_TYPE_LABELS: Record<VenueType, string> = {
-  restaurant: "Traditional Restaurant",
-  fast_food: "Fast Food / Snack",
-  cafe: "Café / Coffee Shop",
+  restaurant: "Restaurant",
+  fast_food: "Restauration rapide",
+  cafe: "Café",
   bar: "Bar",
-  bakery: "Bakery / Pastry",
+  bakery: "Boulangerie / Pâtisserie",
   pub: "Pub",
+};
+
+/** Libellés français des statuts de suivi (interface 100 % francophone). */
+export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  new: "nouveau",
+  analyzed: "analysé",
+  contacted: "contacté",
 };
 
 /** Map an OSM amenity/cuisine tag combo to a simplified venue type. */

@@ -413,7 +413,7 @@ export function Globe({ onEnter, focus = false }: Props) {
       ref={canvasRef}
       role="button"
       tabIndex={0}
-      aria-label="Interactive globe — click to open GeoLead Finder AI"
+      aria-label="Globe interactif — cliquez pour ouvrir GeoLead Finder"
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();

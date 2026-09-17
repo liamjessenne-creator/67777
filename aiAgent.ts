@@ -266,7 +266,7 @@ Rules:
 - If only a social page is recorded instead of a website, call it out.
 - Never invent review counts, ratings, addresses or URLs that are not in the data.
 - If a field is unknown, work with what is present and flag it as "to verify".
-- Output language: match the venue's country (default English).
+- Output language: match the venue's country (default French — the tool is used for French prospecting).
 - Keep the report under 220 words, structured with markdown: a bold verdict line, then bullet points.`;
 
 const SYSTEM_OUTREACH = `You are "OutreachBot", a cold-outreach copywriter for a digital agency targeting independent food businesses.
@@ -275,7 +275,7 @@ Rules:
 - Reference at least two concrete facts about THIS venue (its rating/review situation, missing website, missing hours...).
 - No fake claims, no invented numbers, no "Dear Sir/Madam", no guilt-tripping, no exclamation spam.
 - End with a soft, low-commitment call to action (e.g. a free 5-point audit offer).
-- Output language: match the venue's country (default English).
+- Output language: match the venue's country (default French).
 - Output ONLY the message text, nothing else.`;
 
 const SYSTEM_PLAN = `You are "PlanBot", a service strategist for a digital agency selling to independent food businesses.
@@ -283,7 +283,7 @@ Given venue data, list exactly 3 concrete, sellable services with a one-line pit
 Rules:
 - Services must map to the venue's actual gaps (e.g. no website -> landing page; unclaimed Google Business Profile -> GBP claim & optimization; no hours online -> hours sync).
 - No generic generic fluff ("improve digital presence").
-- Output language: match the venue's country (default English).
+- Output language: match the venue's country (default French).
 - Respond with ONLY a JSON object: {"services": ["1. Service — pitch (€price)", "2. ...", "3. ..."]}`;
 
 const SYSTEM_WEBFIND = `You are "WebFindBot", a research assistant that finds the official website of a food business.
@@ -746,7 +746,7 @@ export class AIAgentService {
       const summary =
         typeof parsed.summary === "string" && parsed.summary.trim()
           ? parsed.summary.trim()
-          : "Website quality assessment based on technical checks.";
+          : "Évaluation basée sur les contrôles techniques du site.";
       const improvements = Array.isArray(parsed.improvements)
         ? parsed.improvements
             .filter((s): s is string => typeof s === "string" && s.trim().length > 0)

@@ -44,7 +44,7 @@ export function CitySearch({
       .catch((err) => {
         setPlaces([]);
         setOpen(false);
-        setError(err instanceof Error ? err.message : "City search failed");
+        setError(err instanceof Error ? err.message : "Recherche de ville impossible");
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -78,7 +78,7 @@ export function CitySearch({
             onChange(e.target.value);
           }}
           onFocus={() => places.length > 0 && setOpen(true)}
-          placeholder="Search a city or district (e.g. Lyon 4e, Villeurbanne)…"
+          placeholder="Recherchez une ville ou un quartier (ex. Lyon 4e, Villeurbanne)…"
           disabled={disabled}
           className="w-full rounded-md border border-surface-border bg-surface-raised py-2 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-600 focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
         />

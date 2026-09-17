@@ -1,7 +1,8 @@
 /** CSV / JSON export for filtered leads. */
 
 import type { Lead } from "./types";
-import { VENUE_TYPE_LABELS } from "./types";
+import { LEAD_STATUS_LABELS, VENUE_TYPE_LABELS } from "./types";
+import { PRIORITY_LABELS } from "./stats";
 
 function csvEscape(value: string): string {
   if (/[",\n;]/.test(value)) {
@@ -10,22 +11,29 @@ function csvEscape(value: string): string {
   return value;
 }
 
+/** En-têtes CSV en français (export destiné à un suivi commercial francophone). */
 const CSV_HEADERS = [
-  "Name",
-  "Category",
+  "Nom",
+  "Catégorie",
   "Latitude",
   "Longitude",
-  "Address",
-  "Phone",
-  "Website",
-  "Site Verdict",
-  "Digital Score",
-  "Priority",
-  "Google Rating",
-  "Review Count",
-  "Status",
-  "OSM Id",
+  "Adresse",
+  "Téléphone",
+  "Site web",
+  "Verdict site",
+  "Score numérique",
+  "Priorité",
+  "Note Google",
+  "Nombre d'avis",
+  "Statut",
+  "Id OSM",
 ];
+
+const VERDICT_LABELS: Record<string, string> = {
+  good: "bon site",
+  improve: "à améliorer",
+  critical: "critique",
+};
 
 export function leadsToCsv(leads: Lead[]): string {
   const rows = leads.map((l) =>
@@ -37,12 +45,12 @@ export function leadsToCsv(leads: Lead[]): string {
       l.venue.address,
       l.venue.phone ?? "",
       l.venue.website ?? "",
-      l.siteAudit ? l.siteAudit.verdict : "",
+      l.siteAudit ? (VERDICT_LABELS[l.siteAudit.verdict] ?? l.siteAudit.verdict) : "",
       String(l.enrichment.digitalScore),
-      l.enrichment.priority,
+      PRIORITY_LABELS[l.enrichment.priority],
       l.enrichment.checks.rating?.toFixed(1) ?? "",
       l.enrichment.checks.reviewCount?.toString() ?? "",
-      l.status,
+      LEAD_STATUS_LABELS[l.status],
       l.venue.id,
     ]
       .map(csvEscape)

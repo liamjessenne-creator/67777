@@ -110,7 +110,7 @@ export function Modal({
           <button
             onClick={onClose}
             className="rounded p-1 text-slate-500 hover:bg-slate-700/40 hover:text-slate-200"
-            aria-label="Close"
+            aria-label="Fermer"
           >
             <X size={16} />
           </button>

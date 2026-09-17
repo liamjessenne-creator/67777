@@ -71,42 +71,42 @@ export function computeEnrichment(venue: Venue): Enrichment {
 
   if (hasRealSite) {
     score += SCORE_WEIGHTS.website;
-    signals.push(`Real website found (${rawWebsite})`);
+    signals.push(`Site web réel trouvé (${rawWebsite})`);
   } else if (socialOnly) {
-    signals.push("Only a social page instead of a website");
+    signals.push("Seulement une page de réseau social au lieu d'un site");
   } else {
-    signals.push("No website recorded on OpenStreetMap");
+    signals.push("Aucun site web relevé sur OpenStreetMap");
   }
 
   const hasSocial = detectSocial(venue);
   if (hasSocial) {
     score += SCORE_WEIGHTS.social;
-    signals.push("Social media presence detected");
+    signals.push("Présence sur les réseaux sociaux détectée");
   } else {
-    signals.push("No social media detected");
+    signals.push("Aucune présence détectée sur les réseaux sociaux");
   }
 
   const reviews = estimateReviewCount(venue);
   if (reviews != null && reviews > 50) {
     score += Math.min(SCORE_WEIGHTS.reviews, 30);
-    signals.push(`Estimated established review base (~${reviews}+)`);
+    signals.push(`Base d'avis estimée (~${reviews}+)`);
   } else {
-    signals.push("No evidence of a strong review base");
+    signals.push("Aucune base d'avis significative détectée");
   }
 
   const hasPhone = Boolean(venue.phone);
   if (hasPhone) {
     score += SCORE_WEIGHTS.phone;
-    signals.push("Phone number listed");
+    signals.push("Numéro de téléphone renseigné");
   } else {
-    signals.push("No phone number recorded");
+    signals.push("Aucun numéro de téléphone relevé");
   }
 
   if (venue.openHoursRecorded) {
     score += SCORE_WEIGHTS.hours;
-    signals.push("Opening hours published");
+    signals.push("Horaires d'ouverture publiés");
   } else {
-    signals.push("Opening hours not published online");
+    signals.push("Horaires d'ouverture non publiés en ligne");
   }
 
   const priority: PriorityTier = score < 40 ? "high" : score < 70 ? "medium" : "low";

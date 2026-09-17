@@ -105,7 +105,9 @@ node overpass-test.mjs "Paris"   # validate Overpass queries for a city
 
 ## Tech stack
 
-React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · HTML-canvas globe (zero map dependencies) · react-markdown · Vitest
+React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · HTML-canvas globe (zero map dependencies) · WebGL **Chrome Cells** background · react-markdown · Vitest
+
+**Langue & typographie** — the whole interface is in **French**. Type is bundled locally (no CDN): **Sora** for headings and brand, **Manrope** for the interface, **JetBrains Mono** for figures and data.
 
 ## Project layout
 

@@ -46,21 +46,21 @@ export function SettingsModal({
     onSavePlaces(nextPlaces);
 
     if (!nextAi.apiKey) {
-      setTestResult({ ok: false, msg: "No API key provided." });
+      setTestResult({ ok: false, msg: "Aucune clé API renseignée." });
       setTesting(false);
       return;
     }
     try {
       const agent = new AIAgentService(nextAi);
       const reply = await agent.testConnection();
-      setTestResult({ ok: true, msg: `Connection OK — model replied "${reply}"` });
+      setTestResult({ ok: true, msg: `Connexion établie — le modèle a répondu « ${reply} »` });
     } catch (err) {
       const msg =
         err instanceof AiAgentError
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Unknown error";
+            : "Erreur inconnue";
       setTestResult({ ok: false, msg });
     } finally {
       setTesting(false);
@@ -68,13 +68,16 @@ export function SettingsModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Settings — AI & Enrichment">
+    <Modal open={open} onClose={onClose} title="Réglages">
       <div className="space-y-4">
         <section className="space-y-3">
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <KeyRound size={13} className="text-accent" /> LLM Provider (OpenAI-compatible)
+            <KeyRound size={13} className="text-accent" /> Fournisseur du modèle (compatible OpenAI)
           </h3>
-          <Field label="Groq / DeepSeek API Key" hint="Stored only in this browser's localStorage.">
+          <Field
+            label="Clé API (Groq, DeepSeek, Qwen…)"
+            hint="Conservée uniquement dans le stockage local de ce navigateur."
+          >
             <input
               type="password"
               value={apiKey}
@@ -85,7 +88,7 @@ export function SettingsModal({
               spellCheck={false}
             />
           </Field>
-          <Field label="Base URL">
+          <Field label="URL de base">
             <input
               type="text"
               value={baseUrl}
@@ -96,8 +99,8 @@ export function SettingsModal({
             />
           </Field>
           <Field
-            label="Model ID"
-            hint="Presets above verified live against Groq. Type any model id for other OpenAI-compatible providers."
+            label="Identifiant du modèle"
+            hint="Modèles proposés vérifiés sur Groq. Vous pouvez saisir n'importe quel identifiant pour un autre fournisseur compatible OpenAI."
           >
             <input
               type="text"
@@ -117,9 +120,12 @@ export function SettingsModal({
 
         <section className="space-y-3 border-t border-surface-border pt-4">
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <MapPinned size={13} className="text-accent" /> Google Places (optional — real review counts)
+            <MapPinned size={13} className="text-accent" /> Google Places (optionnel — vrais nombres d'avis)
           </h3>
-          <Field label="Google Places API Key" hint="New Places API key. Billing applies per lookup.">
+          <Field
+            label="Clé API Google Places"
+            hint="Clé de la nouvelle API Places. Google facture chaque requête."
+          >
             <input
               type="password"
               value={placesKey}
@@ -137,7 +143,7 @@ export function SettingsModal({
               onChange={(e) => setPlacesEnabled(e.target.checked)}
               className="h-4 w-4 accent-emerald-500"
             />
-            Enrich venues with real Google ratings & review counts
+            Enrichir les fiches avec les notes et nombres d'avis Google réels
           </label>
         </section>
 
@@ -156,13 +162,14 @@ export function SettingsModal({
 
         <div className="flex items-center justify-between border-t border-surface-border pt-4">
           <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            <ShieldCheck size={12} /> Keys never leave your browser except to call the APIs directly.
+            <ShieldCheck size={12} /> Les clés ne quittent jamais votre navigateur, sauf pour
+            appeler directement les API concernées.
           </span>
           <div className="flex gap-2">
-            <Button onClick={onClose}>Close</Button>
+            <Button onClick={onClose}>Fermer</Button>
             <Button variant="primary" onClick={handleSaveAndTest} disabled={testing}>
               {testing ? <Spinner size={14} /> : null}
-              {testing ? "Testing…" : "Save & Test Connection"}
+              {testing ? "Test en cours…" : "Enregistrer et tester"}
             </Button>
           </div>
         </div>

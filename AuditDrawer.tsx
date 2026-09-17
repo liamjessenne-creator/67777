@@ -5,7 +5,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { AiAudit, Lead } from "./types";
 import { VENUE_TYPE_LABELS } from "./types";
-import { priorityBadgeClass } from "./stats";
+import { PRIORITY_LABELS, priorityBadgeClass } from "./stats";
 import { Button, Spinner } from "./ui";
 
 type OutreachChannel = "sms" | "whatsapp" | "email";
@@ -86,14 +86,14 @@ export function AuditDrawer({
             <button
               onClick={onClose}
               className="rounded p-1 text-slate-500 hover:bg-slate-700/40 hover:text-slate-200"
-              aria-label="Close"
+              aria-label="Fermer"
             >
               <X size={18} />
             </button>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className={`rounded border px-1.5 py-0.5 font-semibold uppercase ${priorityBadgeClass(lead.enrichment.priority)}`}>
-              Score {lead.enrichment.digitalScore}/100 · {lead.enrichment.priority}
+              Score {lead.enrichment.digitalScore}/100 · {PRIORITY_LABELS[lead.enrichment.priority]}
             </span>
             {lead.audit?.website ? (
               <a
@@ -105,22 +105,22 @@ export function AuditDrawer({
                     ? "border-accent/50 bg-accent/10 text-emerald-300 hover:bg-accent/20"
                     : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
                 }`}
-                title={lead.audit.website.verified ? "Site officiel vérifié accessible" : "Site proposé par l'IA, non vérifié — à confirmer avant de contacter"}
+                title={lead.audit.website.verified ? "Site officiel vérifié accessible" : "Site proposé, non vérifié — à confirmer avant de contacter"}
               >
                 <Globe size={11} />
-                {lead.audit.website.verified ? "Site web ✓" : "Site web ~"}
+                {lead.audit.website.verified ? "Site vérifié" : "Site à confirmer"}
                 <ExternalLink size={10} className="opacity-70" />
               </a>
             ) : (
               <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
-                {lead.enrichment.checks.hasWebsite ? "Website ✓" : "No website"}
+                {lead.enrichment.checks.hasWebsite ? "Site web ✓" : "Sans site web"}
               </span>
             )}
             <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
-              {lead.enrichment.checks.hasSocial ? "Socials ✓" : "No socials"}
+              {lead.enrichment.checks.hasSocial ? "Réseaux sociaux ✓" : "Sans réseaux sociaux"}
             </span>
             <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
-              {lead.venue.openHoursRecorded ? "Hours online ✓" : "Hours hidden"}
+              {lead.venue.openHoursRecorded ? "Horaires publiés ✓" : "Horaires absents"}
             </span>
             <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
               {lead.venue.id}
@@ -140,7 +140,7 @@ export function AuditDrawer({
           {lead.siteAudit ? (
             <section className="mb-6">
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <Gauge size={13} className="text-sky-400" /> Website Quality — Site Check
+                <Gauge size={13} className="text-sky-400" /> Qualité du site web
               </h3>
               <div className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -154,10 +154,10 @@ export function AuditDrawer({
                     }`}
                   >
                     {lead.siteAudit.verdict === "good"
-                      ? "Good site"
+                      ? "Bon site"
                       : lead.siteAudit.verdict === "improve"
-                        ? "To improve"
-                        : "Critical"}
+                        ? "À améliorer"
+                        : "Critique"}
                   </span>
                   <a
                     href={lead.siteAudit.url}
@@ -177,16 +177,16 @@ export function AuditDrawer({
                   </span>
                   <span className="rounded border border-surface-border px-1.5 py-0.5">
                     {lead.siteAudit.checks.loadMs != null
-                      ? `${(lead.siteAudit.checks.loadMs / 1000).toFixed(1)}s`
-                      : "speed n/a"}
+                      ? `chargement ${(lead.siteAudit.checks.loadMs / 1000).toFixed(1)} s`
+                      : "vitesse indéterminée"}
                   </span>
                   <span className="rounded border border-surface-border px-1.5 py-0.5">
                     {lead.siteAudit.checks.contentReliable
-                      ? `${lead.siteAudit.checks.contentChars.toLocaleString()} chars read`
-                      : "content not readable"}
+                      ? `${lead.siteAudit.checks.contentChars.toLocaleString()} caractères lus`
+                      : "contenu illisible"}
                   </span>
                   <span className="rounded border border-surface-border px-1.5 py-0.5">
-                    {lead.siteAudit.checks.hasContact ? "contact ✓" : "no contact info"}
+                    {lead.siteAudit.checks.hasContact ? "contact ✓" : "aucun contact affiché"}
                   </span>
                 </div>
                 {lead.siteAudit.improvements.length > 0 ? (
@@ -200,7 +200,8 @@ export function AuditDrawer({
                   </ul>
                 ) : null}
                 <p className="mt-3 font-mono text-[9px] uppercase tracking-wider text-slate-600">
-                  Checked {new Date(lead.siteAudit.generatedAt).toLocaleString()} · {lead.siteAudit.model}
+                  Contrôlé le {new Date(lead.siteAudit.generatedAt).toLocaleString()} ·{" "}
+                  {lead.siteAudit.model}
                 </p>
               </div>
             </section>
@@ -209,13 +210,13 @@ export function AuditDrawer({
           {!audit && !auditing ? (
             <div className="rounded-lg border border-dashed border-surface-border bg-surface-overlay/50 p-6 text-center">
               <FileText size={26} className="mx-auto mb-2 text-slate-600" />
-              <p className="text-sm text-slate-300">No AI audit yet for this venue.</p>
+              <p className="text-sm text-slate-300">Aucune analyse enregistrée pour ce commerce.</p>
               <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">
-                The agent will analyze the digital gap, draft a cold-outreach message and
-                propose 3 sellable services.
+                L'analyse produit un rapport de présence numérique, un message de premier
+                contact et trois prestations à proposer.
               </p>
               <Button variant="primary" className="mt-4" onClick={() => onRunAudit(lead)}>
-                <Target size={14} /> Run AI Deep Audit
+                <Target size={14} /> Analyser cette fiche
               </Button>
             </div>
           ) : null}
@@ -226,10 +227,10 @@ export function AuditDrawer({
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Spinner size={28} />
               <p className="text-sm text-slate-400">
-                L'agent IA analyse <span className="text-slate-200">{lead.venue.name}</span>…
+                Analyse de <span className="text-slate-200">{lead.venue.name}</span>…
               </p>
               <p className="text-[11px] text-slate-600">
-                4 appels IA en parallèle : rapport d'écart, message de contact, plan d'action,
+                Rapport de présence numérique, message de premier contact, plan d'action et
                 recherche du site officiel.
               </p>
             </div>
@@ -253,7 +254,7 @@ export function AuditDrawer({
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <Target size={13} className="text-accent" /> Digital Gap Report
+                    <Target size={13} className="text-accent" /> Rapport de présence numérique
                   </h3>
                   {audit.gapReport ? (
                     <button
@@ -283,7 +284,7 @@ export function AuditDrawer({
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <MessageSquare size={13} className="text-accent" /> Cold Outreach Draft
+                    <MessageSquare size={13} className="text-accent" /> Message de premier contact
                   </h3>
                   <div className="flex items-center gap-1.5">
                     {(["sms", "whatsapp", "email"] as const).map((c) => (
@@ -305,9 +306,9 @@ export function AuditDrawer({
                     <button
                       onClick={() => copy(audit.outreach, "outreach")}
                       className="ml-1 text-[11px] text-slate-500 hover:text-accent"
-                      title="Copy message"
+                      title="Copier le message"
                     >
-                      {copied === "outreach" ? "Copied!" : <Copy size={12} />}
+                      {copied === "outreach" ? "Copié !" : <Copy size={12} />}
                     </button>
                   </div>
                 </div>
@@ -339,13 +340,13 @@ export function AuditDrawer({
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    <FileText size={13} className="text-accent" /> Action Plan — 3 Sellable Services
+                    <FileText size={13} className="text-accent" /> Plan d'action — 3 prestations
                   </h3>
                   <button
                     onClick={() => copy(audit.actionPlan.join("\n"), "plan")}
                     className="text-[11px] text-slate-500 hover:text-accent"
                   >
-                    {copied === "plan" ? "Copied!" : <Copy size={12} />}
+                    {copied === "plan" ? "Copié !" : <Copy size={12} />}
                   </button>
                 </div>
                 {audit.actionPlan.length > 0 ? (
@@ -372,7 +373,7 @@ export function AuditDrawer({
               </section>
 
               <p className="text-[10px] text-slate-600">
-                Generated {new Date(audit.generatedAt).toLocaleString()} with {audit.model}.
+                Généré le {new Date(audit.generatedAt).toLocaleString()} avec {audit.model}.
               </p>
             </div>
           ) : null}
@@ -382,13 +383,13 @@ export function AuditDrawer({
         <footer className="flex items-center justify-between border-t border-surface-border px-5 py-3">
           <span className="text-[11px] text-slate-500">
             {lead.venue.phone
-              ? `Contact: ${lead.venue.phone}`
-              : "No phone on record — find it via the website or Google listing"}
+              ? `Contact : ${lead.venue.phone}`
+              : "Aucun téléphone enregistré — à récupérer sur la fiche Google ou le site"}
           </span>
           <div className="flex gap-2">
             {audit ? (
               <Button onClick={() => onRunAudit(lead)} disabled={auditing}>
-                <RefreshCw size={13} /> Re-run audit
+                <RefreshCw size={13} /> Relancer l'analyse
               </Button>
             ) : null}
             <Button
@@ -396,7 +397,7 @@ export function AuditDrawer({
               onClick={() => onMarkContacted(lead)}
               disabled={lead.status === "contacted"}
             >
-              {lead.status === "contacted" ? "Marked contacted ✓" : "Mark as contacted"}
+              {lead.status === "contacted" ? "Contacté ✓" : "Marquer comme contacté"}
             </Button>
           </div>
         </footer>

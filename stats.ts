@@ -18,6 +18,13 @@ export function computeStats(leads: Lead[]): Stats {
   };
 }
 
+/** Libellés français des niveaux de priorité (interface francophone). */
+export const PRIORITY_LABELS: Record<PriorityTier, string> = {
+  high: "prioritaire",
+  medium: "moyenne",
+  low: "faible",
+};
+
 export function priorityBadgeClass(priority: PriorityTier): string {
   switch (priority) {
     case "high":

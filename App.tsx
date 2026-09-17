@@ -582,8 +582,9 @@ export default function App() {
       />
 
       {/* Scan bar */}
-      <div className="border-b border-surface-border bg-surface/80 px-4 py-2.5 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-2">
+      <div className="border-b border-white/10 bg-slate-950/60 px-4 py-2.5 backdrop-blur-md">
+        {/* FIX (mobile) : la barre passe à la ligne au lieu de comprimer la recherche. */}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
           <Crosshair size={15} className="shrink-0 text-accent" />
           <CitySearch
             value={cityQuery}
@@ -607,10 +608,10 @@ export default function App() {
                 ? "border-accent/50 bg-accent/10 text-emerald-300"
                 : "border-surface-border text-slate-300 hover:border-slate-500"
             }`}
-            title="Filters"
+            title="Filtres"
           >
             <SlidersHorizontal size={14} />
-            <span className="hidden sm:inline">Filters</span>
+            <span className="hidden sm:inline">Filtres</span>
           </button>
         </div>
       </div>
@@ -673,27 +674,27 @@ export default function App() {
           <div className="rounded-xl border border-surface-border bg-gradient-to-r from-accent/10 via-surface-raised to-surface-raised px-5 py-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div className="min-w-0">
-                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100">
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
                   <Trophy size={18} className="shrink-0 text-accent" />
-                  {scanSummary ? scanSummary.city : "Prospect Results"}
+                  {scanSummary ? scanSummary.city : "Résultats"}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-400">
                   {scanSummary ? (
                     <>
-                      <span className="font-semibold text-slate-200">{scanSummary.total}</span> businesses
-                      scanned · <span className="font-semibold text-red-400">{scanSummary.high} priority targets</span>
-                      {scanSummary.capped ? " · scan capped (refine with a district)" : ""} — ranked by weakest
-                      digital presence first
+                      <span className="font-semibold text-slate-200">{scanSummary.total}</span> commerces
+                      analysés · <span className="font-semibold text-red-400">{scanSummary.high} cibles prioritaires</span>
+                      {scanSummary.capped ? " · analyse plafonnée (affinez sur un quartier)" : ""} — classés par
+                      présence numérique la plus faible
                     </>
                   ) : (
-                    "Run a scan to see ranked prospects here"
+                    "Lancez une analyse pour afficher les prospects classés ici"
                   )}
                 </p>
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 {siteScan.active ? (
                   <Button variant="danger" onClick={stopSiteChecks}>
-                    <Square size={13} /> Stop ({siteScan.done}/{siteScan.total})
+                    <Square size={13} /> Arrêter ({siteScan.done}/{siteScan.total})
                   </Button>
                 ) : (
                   <Button
@@ -703,10 +704,10 @@ export default function App() {
                       !aiSettings.apiKey ||
                       !leads.some((l) => l.enrichment.checks.hasWebsite && l.venue.website)
                     }
-                    title="Analyze the quality of existing websites (speed, HTTPS, content) with AI"
+                    title="Contrôler la qualité des sites existants : vitesse, HTTPS, contenu"
                   >
                     <Gauge size={13} />
-                    Site check
+                    Vérifier les sites
                     {siteScan.total > 0 && !siteScan.active
                       ? ` (${siteScan.done}/${siteScan.total})`
                       : ""}
@@ -714,7 +715,7 @@ export default function App() {
                 )}
                 {siteScan.last ? (
                   <span className="font-mono text-[10px] text-slate-500">
-                    last: {siteScan.last}
+                    dernier : {siteScan.last}
                   </span>
                 ) : null}
                 <Button
@@ -732,16 +733,22 @@ export default function App() {
                 {leads.length > 0 ? (
                   <Button
                     variant="danger"
-                    title="Clear all scanned leads"
+                    title="Effacer tous les résultats"
                     onClick={() => {
-                      if (!window.confirm("Delete all scanned leads and results?")) return;
+                      if (
+                        !window.confirm(
+                          "Supprimer tous les commerces analysés et les résultats enregistrés ?",
+                        )
+                      ) {
+                        return;
+                      }
                       setLeads([]);
                       setScanSummary(null);
                       setSelectedId(null);
                       setDrawerLeadId(null);
                     }}
                   >
-                    <RotateCcw size={13} /> Reset
+                    <RotateCcw size={13} /> Réinitialiser
                   </Button>
                 ) : null}
               </div>
@@ -760,7 +767,7 @@ export default function App() {
             >
               <div className="xl:sticky xl:top-2 rounded-xl border border-surface-border bg-surface-raised/70 px-4 py-3">
                 <h3 className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Filters
+                  Filtres
                 </h3>
                 <FiltersPanel
                   venueTypes={venueTypes}
@@ -770,7 +777,7 @@ export default function App() {
                 />
                 {scans.length > 0 ? (
                   <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-wider text-slate-600">
-                    Last scans:
+                    Dernières analyses :
                     <br />
                     {scans
                       .slice(0, 3)
@@ -802,18 +809,19 @@ export default function App() {
           </div>
 
           <p className="mx-auto mt-6 max-w-3xl text-center text-[11px] leading-relaxed text-slate-600">
-            Data © OpenStreetMap contributors (ODbL) — AI results are indicative and must be
-            verified before outreach. Use responsibly:{" "}
+            Données © contributeurs OpenStreetMap (ODbL). Les rapports et messages générés sont
+            indicatifs et doivent être vérifiés avant tout démarchage. À utiliser de manière
+            responsable :{" "}
             <a href="#/mentions-legales" className="underline decoration-slate-700 hover:text-accent">
-              legal notice
+              mentions légales
             </a>{" "}
             ·{" "}
             <a href="#/confidentialite" className="underline decoration-slate-700 hover:text-accent">
-              privacy
+              confidentialité
             </a>{" "}
             ·{" "}
             <a href="#/cgu" className="underline decoration-slate-700 hover:text-accent">
-              terms
+              CGU
             </a>
           </p>
         </div>
