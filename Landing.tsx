@@ -52,7 +52,7 @@ export function Landing({ onEnter }: Props) {
             <Store size={16} />
           </span>
           <div className="leading-tight">
-            <h1 className="font-display bg-gradient-to-b from-white via-slate-200 to-slate-400 bg-clip-text text-sm font-semibold tracking-tight text-transparent">
+            <h1 className="text-chrome-live font-display text-sm font-semibold tracking-tight">
               GeoLead Finder
             </h1>
             <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">
@@ -83,10 +83,8 @@ export function Landing({ onEnter }: Props) {
             <div className="max-w-xl drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]">
               <h1 className="text-chrome text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
                 Trouvez les commerces{" "}
-                <span className="bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">
-                  absents du web
-                </span>
-                .
+                {/* Accent VIVANT : bleu ⇄ blanc animé (ancien dégradé vert/teal). */}
+                <span className="text-accent-live">absents du web</span>.
               </h1>
               <p className="mt-4 text-base leading-relaxed text-slate-300">
                 GeoLead Finder analyse une ville, note la présence numérique de chaque
@@ -97,7 +95,7 @@ export function Landing({ onEnter }: Props) {
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 <button
                   onClick={onEnter}
-                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-slate-950 transition-colors hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                  className="accent-live liquid-edge inline-flex items-center gap-2 rounded-xl border border-white/25 px-6 py-3 text-sm font-semibold shadow-glow transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
                 >
                   Ouvrir l'outil <ArrowRight size={16} />
                 </button>
@@ -111,11 +109,8 @@ export function Landing({ onEnter }: Props) {
                   ["0–100", "score de présence"],
                   ["CSV / JSON", "export des résultats"],
                 ].map(([v, l]) => (
-                  <div
-                    key={l}
-                    className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2.5 backdrop-blur-md"
-                  >
-                    <dt className="text-base font-bold text-emerald-400">{v}</dt>
+                  <div key={l} className="glass glass-sheen rounded-xl px-3 py-2.5">
+                    <dt className="text-accent-live text-base font-bold">{v}</dt>
                     <dd className="text-[9px] uppercase tracking-widest text-slate-500">{l}</dd>
                   </div>
                 ))}
@@ -133,17 +128,17 @@ export function Landing({ onEnter }: Props) {
         </section>
 
         {/* ---- Fonctions ---- */}
-        <section className="border-t border-white/10 bg-slate-950/55 backdrop-blur-sm">
+        <section className="border-t border-white/10 bg-black/35 backdrop-blur-md">
           <div className="mx-auto grid max-w-7xl gap-4 px-6 py-14 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="rounded-xl border border-white/10 bg-slate-950/60 p-5 backdrop-blur transition-colors hover:border-accent/40"
+                className="glass glass-live rounded-2xl p-5 transition-all hover:border-accent/45 hover:shadow-glow-sm"
               >
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-accent">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-accent shadow-glow-sm">
                   {f.icon}
                 </span>
-                <h3 className="mt-3 text-sm font-semibold text-slate-100">{f.title}</h3>
+                <h3 className="text-chrome mt-3 text-sm font-semibold">{f.title}</h3>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-slate-400">{f.text}</p>
               </div>
             ))}
@@ -151,7 +146,7 @@ export function Landing({ onEnter }: Props) {
         </section>
 
         {/* ---- Pied de page ---- */}
-        <footer className="border-t border-white/10 bg-slate-950/70 backdrop-blur-md">
+        <footer className="border-t border-white/10 bg-black/55 backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-xs text-slate-500 sm:flex-row sm:items-center">
             <p>
               <span className="font-semibold text-slate-300">GeoLead Finder</span> — outil de

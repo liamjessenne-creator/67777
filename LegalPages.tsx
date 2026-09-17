@@ -224,11 +224,11 @@ export function LegalPageView({ page, onBack }: Props) {
   const p = PAGES[page];
   return (
     <div className="bg-grid min-h-full">
-      <header className="border-b border-surface-border bg-surface-raised/80 backdrop-blur">
+      <header className="border-b border-white/10 bg-black/45 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-3">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 rounded-md border border-surface-border px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:border-accent/50 hover:text-accent"
+            className="glass inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-colors hover:border-accent/50 hover:text-accent"
           >
             <ArrowLeft size={13} /> Retour
           </button>
@@ -239,11 +239,11 @@ export function LegalPageView({ page, onBack }: Props) {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-50">{p.title}</h1>
+        <h1 className="text-chrome text-2xl font-extrabold tracking-tight">{p.title}</h1>
         <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-slate-500">
           Dernière mise à jour : {p.updated}
         </p>
-        <div className="mt-8 rounded-xl border border-surface-border bg-surface-raised p-6 sm:p-8">
+        <div className="glass glass-sheen mt-8 rounded-2xl p-6 sm:p-8">
           {p.body}
         </div>
 

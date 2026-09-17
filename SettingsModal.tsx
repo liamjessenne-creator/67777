@@ -164,7 +164,7 @@ export function SettingsModal({
           </Field>
         </section>
 
-        <section className="space-y-3 border-t border-surface-border pt-4">
+        <section className="space-y-3 border-t border-white/10 pt-4">
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <MapPinned size={13} className="text-accent" /> Google Places (optionnel — vrais nombres d'avis)
           </h3>
@@ -206,7 +206,7 @@ export function SettingsModal({
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between border-t border-surface-border pt-4">
+        <div className="flex items-center justify-between border-t border-white/10 pt-4">
           <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <ShieldCheck size={12} /> Les clés ne quittent jamais votre navigateur, sauf pour
             appeler directement les API concernées.

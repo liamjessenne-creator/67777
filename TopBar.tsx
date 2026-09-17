@@ -22,11 +22,11 @@ export function TopBar({
         className="flex shrink-0 items-center gap-2.5 text-left"
         title={onHome ? "Retour à l'accueil" : undefined}
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-accent">
+        <span className="liquid-edge flex h-8 w-8 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-accent shadow-glow-sm">
           <Store size={16} />
         </span>
         <div className="leading-tight">
-          <h1 className="font-display whitespace-nowrap bg-gradient-to-b from-white via-slate-200 to-slate-400 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent">
+          <h1 className="text-chrome-live font-display whitespace-nowrap text-[15px] font-semibold tracking-tight">
             GeoLead Finder
           </h1>
           <p className="hidden font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500 sm:block">
@@ -39,8 +39,8 @@ export function TopBar({
       <span
         className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider sm:inline-flex ${
           settingsOk
-            ? "border-accent/40 bg-accent/10 text-emerald-300"
-            : "border-amber-500/50 bg-amber-500/10 text-amber-300"
+            ? "border-accent/45 bg-accent/12 text-emerald-200 backdrop-blur-md"
+            : "border-amber-400/50 bg-amber-500/10 text-amber-300 backdrop-blur-md"
         }`}
         title={
           settingsOk
@@ -49,9 +49,7 @@ export function TopBar({
         }
       >
         <span
-          className={`h-1.5 w-1.5 rounded-full ${
-            settingsOk ? "bg-emerald-400" : "bg-amber-400"
-          }`}
+          className={`h-1.5 w-1.5 rounded-full ${settingsOk ? "dot-accent" : "bg-amber-400"}`}
         />
         {settingsOk ? "Connecté" : "Clé manquante"}
       </span>

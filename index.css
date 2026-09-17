@@ -6,13 +6,64 @@
   color-scheme: dark;
 }
 
+/*
+ * Images clés définies ici (et non seulement dans tailwind.config.js) : elles
+ * doivent exister même si la classe utilitaire correspondante n'est pas utilisée
+ * quelque part — Tailwind n'émet les keyframes que pour les utilitaires repérés.
+ */
+@keyframes liquid-sheen {
+  0% {
+    background-position: -150% 50%;
+  }
+  100% {
+    background-position: 250% 50%;
+  }
+}
+
+@keyframes accent-flow {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes chrome-sweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 220% 50%;
+  }
+}
+
+@keyframes pulse-accent {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 6px rgba(97, 184, 255, 0.85);
+  }
+  50% {
+    opacity: 0.78;
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.6);
+  }
+}
+
 html,
 body,
 #root {
   height: 100%;
 }
 
-/* Titres et marque : Sora — typographie large assortie au fond « chrome ». */
+/*
+ * TYPOGRAPHIE CHROME
+ * Titres et marque : Sora. Le texte courant prend une teinte argent/chrome
+ * (rampe `slate` redéfinie dans tailwind.config.js), donc tout l'écran est déjà
+ * en chrome ; les dégradés « haute qualité » ci-dessous ajoutent le relief
+ * métallique là où il compte (titres, chiffres, libellés).
+ */
 h1,
 h2,
 h3,
@@ -24,60 +75,201 @@ h4,
 
 body {
   @apply bg-surface font-sans text-slate-200 antialiased;
-  /* FIX (UI) : base sombre accordée au fond ChromeCells (#040405). */
+  /* Fond sombre froid accordé au fond ChromeCells (#040405). */
   background:
-    radial-gradient(1100px 500px at 75% -10%, rgba(16, 185, 129, 0.07), transparent 60%),
-    radial-gradient(900px 500px at -5% 110%, rgba(148, 163, 184, 0.06), transparent 60%),
+    radial-gradient(1100px 520px at 78% -12%, rgba(97, 184, 255, 0.10), transparent 62%),
+    radial-gradient(900px 520px at -8% 112%, rgba(226, 236, 245, 0.07), transparent 62%),
     #05070a;
 }
 
-/*
- * FIX (UI) : panneaux « verre fumé » — le fond ChromeCells reste visible mais
- * les données (tableaux, chiffres) gardent un contraste parfaitement lisible.
- */
+/* ---------------------------------------------------------------------------
+ * TEXTE CHROME HAUTE QUALITÉ
+ * `-webkit-text-fill-color` (et non `color`) reste transparent pour le texte :
+ * les icônes SVG placées DANS un titre gardent donc leur couleur (currentColor)
+ * et ne disparaissent pas.
+ * ------------------------------------------------------------------------- */
+.text-chrome {
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #f2f6fa 30%,
+    #c8d3de 52%,
+    #ffffff 62%,
+    #a8b3c0 88%,
+    #dde5ed 100%
+  );
+  background-size: 100% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #c8d2dc;
+}
+
+/* Chrome balayé : léger déplacement du reflet (marque, gros chiffres). */
+.text-chrome-live {
+  background: linear-gradient(
+    100deg,
+    #ffffff 0%,
+    #c3d6ea 18%,
+    #7fb8ea 32%,
+    #ffffff 48%,
+    #9fb0c2 66%,
+    #dbe9f7 82%,
+    #ffffff 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #c8d2dc;
+  animation: chrome-sweep 7s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * ACCENT VIVANT (bleu ⇄ blanc) — remplace l'ancien vert.
+ * ------------------------------------------------------------------------- */
+.accent-live {
+  background: linear-gradient(100deg, #ffffff 0%, #bcdcff 22%, #61b8ff 45%, #ffffff 68%, #9ccdff 100%);
+  background-size: 260% 100%;
+  animation: accent-flow 6s ease-in-out infinite;
+  color: #0a1b2b;
+}
+
+.text-accent-live {
+  background: linear-gradient(100deg, #ffffff 0%, #a9d3ff 25%, #61b8ff 45%, #ffffff 72%, #8fc6ff 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #8fc6ff;
+  animation: accent-flow 6s ease-in-out infinite;
+}
+
+/* Pastille d'état : pulsation bleu → blanc. */
+.dot-accent {
+  background: linear-gradient(120deg, #ffffff, #61b8ff);
+  animation: pulse-accent 2.6s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * LIQUID GLASS
+ * `position: relative` n'est ajouté que pour ancrer le reflet ; aucun
+ * `overflow: hidden` (les menus déroulants des panneaux doivent pouvoir
+ * déborder librement).
+ * ------------------------------------------------------------------------- */
 .glass {
-  background: rgba(10, 13, 17, 0.72);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  position: relative;
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 30%, rgba(8, 11, 15, 0.66) 100%);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(214, 226, 239, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.36),
+    0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
 .glass-strong {
-  background: rgba(8, 10, 14, 0.85);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  position: relative;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.04) 26%, rgba(5, 7, 10, 0.86) 100%);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(222, 233, 244, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.42),
+    0 24px 60px rgba(0, 0, 0, 0.58);
 }
 
-/* Titres « chrome » (dégradé métallique) pour s'accorder au fond fourni. */
-.text-chrome {
-  background: linear-gradient(180deg, #ffffff 0%, #d7dde3 45%, #7e8894 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* Verre « vivant » : reflet qui traverse lentement la surface. */
+.glass-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 36%,
+    rgba(255, 255, 255, 0.10) 47%,
+    rgba(97, 184, 255, 0.14) 51%,
+    transparent 64%
+  );
+  background-size: 260% 100%;
+  animation: liquid-sheen 8s linear infinite;
+}
+
+/* Verre discret (panneaux de données : le reflet ne gêne jamais la lecture). */
+.glass-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.05) 50%, transparent 58%);
+  background-size: 300% 100%;
+  animation: liquid-sheen 12s linear infinite;
+}
+
+/* Bordure lumineuse animée (cartes mises en avant, bouton principal). */
+.liquid-edge {
+  position: relative;
+}
+.liquid-edge::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.55), rgba(97, 184, 255, 0.35), rgba(255, 255, 255, 0.6));
+  background-size: 260% 100%;
+  animation: liquid-sheen 6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.55;
 }
 
 /* Faint blueprint grid behind the whole dashboard */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(198, 214, 230, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(198, 214, 230, 0.045) 1px, transparent 1px);
   background-size: 34px 34px;
 }
 
-/* Slim scrollbars for the dark dashboard */
+/* Slim chrome scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2c3a4d transparent;
+  scrollbar-color: #33414f transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2c3a4d;
+  background: linear-gradient(180deg, #55606d, #2b333c);
   border-radius: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-chrome-live,
+  .text-accent-live,
+  .accent-live,
+  .dot-accent,
+  .glass-live::after,
+  .glass-sheen::after,
+  .liquid-edge::before {
+    animation: none !important;
+  }
 }
 
 /* ---- Markdown inside the audit drawer ---- */
@@ -109,14 +301,15 @@ body {
 .md-body li {
   @apply text-[13px] text-slate-300;
 }
+/* Le gras du rapport passe en bleu/blanc (ancien vert). */
 .md-body strong {
-  @apply text-emerald-400 font-semibold;
+  @apply text-emerald-300 font-semibold;
 }
 .md-body em {
   @apply text-slate-400;
 }
 .md-body code {
-  @apply text-[12px] bg-surface-overlay border border-surface-border rounded px-1 py-0.5;
+  @apply text-[12px] bg-surface-overlay/70 border border-surface-border rounded px-1 py-0.5;
 }
 .md-body blockquote {
   @apply border-l-2 border-accent/60 pl-3 text-slate-400 italic;

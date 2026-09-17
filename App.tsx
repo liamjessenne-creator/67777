@@ -595,7 +595,7 @@ export default function App() {
       />
 
       {/* Scan bar */}
-      <div className="border-b border-white/10 bg-slate-950/60 px-4 py-2.5 backdrop-blur-md">
+      <div className="border-b border-white/10 bg-black/45 px-4 py-2.5 backdrop-blur-xl">
         {/* FIX (mobile) : la barre passe à la ligne au lieu de comprimer la recherche. */}
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
           <Crosshair size={15} className="shrink-0 text-accent" />
@@ -619,7 +619,7 @@ export default function App() {
             className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors xl:hidden ${
               showFilters
                 ? "border-accent/50 bg-accent/10 text-emerald-300"
-                : "border-surface-border text-slate-300 hover:border-slate-500"
+                : "border-white/12 text-slate-300 hover:border-slate-300/40"
             }`}
             title="Filtres"
           >
@@ -639,7 +639,7 @@ export default function App() {
           className={`flex items-center gap-2 border-b px-4 py-1.5 font-mono text-[11px] ${
             scanError
               ? "border-red-500/30 bg-red-500/10 text-red-300"
-              : "border-surface-border bg-surface-raised/80 text-slate-400 backdrop-blur"
+              : "border-white/10 bg-black/45 text-slate-300 backdrop-blur-xl"
           }`}
         >
           {scanning ? (
@@ -648,8 +648,8 @@ export default function App() {
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                 scanError
-                  ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
-                  : "animate-pulse bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+                  ? "bg-red-400 shadow-[0_0_10px_rgba(168,40,63,0.95)]"
+                  : "dot-accent"
               }`}
             />
           )}
@@ -684,18 +684,18 @@ export default function App() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-4 py-5">
           {/* Results banner */}
-          <div className="rounded-xl border border-surface-border bg-gradient-to-r from-accent/10 via-surface-raised to-surface-raised px-5 py-4">
+          <div className="glass glass-live rounded-2xl bg-gradient-to-r from-accent/12 via-transparent to-transparent px-5 py-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               <div className="min-w-0">
-                <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
+                <h2 className="flex items-center gap-2 font-display text-lg font-semibold">
                   <Trophy size={18} className="shrink-0 text-accent" />
-                  {scanSummary ? scanSummary.city : "Résultats"}
+                  <span className="text-chrome">{scanSummary ? scanSummary.city : "Résultats"}</span>
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-400">
                   {scanSummary ? (
                     <>
-                      <span className="font-semibold text-slate-200">{scanSummary.total}</span> commerces
-                      analysés · <span className="font-semibold text-red-400">{scanSummary.high} cibles prioritaires</span>
+                      <span className="font-mono font-semibold text-chrome">{scanSummary.total}</span> commerces
+                      analysés · <span className="font-semibold text-red-300">{scanSummary.high} cibles prioritaires</span>
                       {scanSummary.capped ? " · analyse plafonnée (affinez sur un quartier)" : ""} — classés par
                       présence numérique la plus faible
                     </>
@@ -778,7 +778,7 @@ export default function App() {
                   : "hidden"
               } w-full xl:block xl:w-[260px] xl:shrink-0`}
             >
-              <div className="xl:sticky xl:top-2 rounded-xl border border-surface-border bg-surface-raised/70 px-4 py-3">
+              <div className="glass glass-sheen xl:sticky xl:top-2 rounded-2xl px-4 py-3">
                 <h3 className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Filtres
                 </h3>
@@ -801,7 +801,7 @@ export default function App() {
               </div>
             </aside>
 
-            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-surface-border bg-surface-raised/50">
+            <div className="glass overflow-hidden rounded-2xl">
               <LeadsTable
                 leads={sortedLeads}
                 selectedId={selectedId}

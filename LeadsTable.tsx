@@ -116,17 +116,17 @@ export function LeadsTable({
   return (
     <div className="h-full overflow-auto">
       <table className="w-full border-collapse text-left text-[13px]">
-        <thead className="sticky top-0 z-10 bg-slate-950/85 font-mono text-[10px] uppercase tracking-[0.15em] text-slate-500 backdrop-blur">
+        <thead className="sticky top-0 z-10 bg-black/60 font-mono text-[10px] uppercase tracking-[0.15em] backdrop-blur-xl">
           <tr>
-            <th className="w-8 px-2 py-2 text-right font-semibold text-slate-600">#</th>
-            <th className="px-2 py-2 font-semibold xl:px-3">Nom</th>
-            <th className="hidden px-3 py-2 font-semibold md:table-cell">Catégorie</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Téléphone</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Avis</th>
-            <th className="px-2 py-2 font-semibold xl:px-3">Site web</th>
-            <th className="px-2 py-2 font-semibold xl:px-3">Score</th>
-            <th className="hidden px-3 py-2 font-semibold lg:table-cell">Statut</th>
-            <th className="px-2 py-2 text-right font-semibold xl:px-3">Actions</th>
+            <th className="text-chrome w-8 px-2 py-2 text-right font-semibold">#</th>
+            <th className="text-chrome px-2 py-2 font-semibold xl:px-3">Nom</th>
+            <th className="text-chrome hidden px-3 py-2 font-semibold md:table-cell">Catégorie</th>
+            <th className="text-chrome hidden px-3 py-2 font-semibold lg:table-cell">Téléphone</th>
+            <th className="text-chrome hidden px-3 py-2 font-semibold lg:table-cell">Avis</th>
+            <th className="text-chrome px-2 py-2 font-semibold xl:px-3">Site web</th>
+            <th className="text-chrome px-2 py-2 font-semibold xl:px-3">Score</th>
+            <th className="text-chrome hidden px-3 py-2 font-semibold lg:table-cell">Statut</th>
+            <th className="text-chrome px-2 py-2 text-right font-semibold xl:px-3">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -143,7 +143,7 @@ export function LeadsTable({
               <tr
                 key={lead.id}
                 onClick={() => onSelect(lead)}
-                className={`cursor-pointer border-b border-surface-border/60 transition-colors ${
+                className={`cursor-pointer border-b border-white/10 transition-colors ${
                   isSelected ? "bg-accent/5" : "hover:bg-slate-800/40"
                 }`}
               >
@@ -190,13 +190,15 @@ export function LeadsTable({
                 <td className="px-2 py-2 xl:px-3">
                   <div className="flex items-center gap-2">
                     <div className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-700 sm:block sm:w-14">
+                      {/* Barre de score : bordeaux (prioritaire), laiton (moyen),
+                          accent bleu/blanc animé (présence correcte). */}
                       <div
                         className={`h-full rounded-full ${
                           priority === "high"
-                            ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]"
+                            ? "bg-red-500 shadow-[0_0_10px_rgba(168,40,63,0.85)]"
                             : priority === "medium"
                               ? "bg-amber-400"
-                              : "bg-emerald-500"
+                              : "accent-live"
                         }`}
                         style={{ width: `${digitalScore}%` }}
                       />

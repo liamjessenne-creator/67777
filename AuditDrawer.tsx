@@ -16,7 +16,7 @@ type OutreachChannel = "sms" | "whatsapp" | "email";
  */
 function SectionSkeleton({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-surface-border bg-surface-overlay/40 px-4 py-3">
+    <div className="rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-3 backdrop-blur-md">
       <div className="space-y-2">
         <div className="h-2.5 w-3/4 animate-pulse rounded bg-slate-700/60" />
         <div className="h-2.5 w-2/3 animate-pulse rounded bg-slate-700/40" />
@@ -62,22 +62,22 @@ export function AuditDrawer({
   return (
     <div className="fixed inset-0 z-[1000] flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-xl flex-col border-l border-surface-border bg-surface-raised shadow-2xl">
+      <aside className="glass-strong glass-sheen relative flex h-full w-full max-w-xl flex-col border-l border-white/12">
         {/* Header */}
-        <header className="border-b border-surface-border px-5 py-4">
+        <header className="border-b border-white/10 px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-block h-3 w-3 shrink-0 rounded-full ${
                     lead.enrichment.priority === "high"
-                      ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]"
+                      ? "bg-red-500 shadow-[0_0_10px_rgba(168,40,63,0.9)]"
                       : lead.enrichment.priority === "medium"
                         ? "bg-amber-400"
-                        : "bg-emerald-500"
+                        : "dot-accent"
                   }`}
                 />
-                <h2 className="truncate text-base font-semibold text-slate-100">{lead.venue.name}</h2>
+                <h2 className="text-chrome truncate text-base font-semibold">{lead.venue.name}</h2>
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
                 {VENUE_TYPE_LABELS[lead.venue.venueType]} · {lead.venue.address}
@@ -112,17 +112,17 @@ export function AuditDrawer({
                 <ExternalLink size={10} className="opacity-70" />
               </a>
             ) : (
-              <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
+              <span className="rounded-md border border-white/10 bg-white/6 px-1.5 py-0.5 text-slate-300 backdrop-blur-sm">
                 {lead.enrichment.checks.hasWebsite ? "Site web ✓" : "Sans site web"}
               </span>
             )}
-            <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
+            <span className="rounded-md border border-white/10 bg-white/6 px-1.5 py-0.5 text-slate-300 backdrop-blur-sm">
               {lead.enrichment.checks.hasSocial ? "Réseaux sociaux ✓" : "Sans réseaux sociaux"}
             </span>
-            <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
+            <span className="rounded-md border border-white/10 bg-white/6 px-1.5 py-0.5 text-slate-300 backdrop-blur-sm">
               {lead.venue.openHoursRecorded ? "Horaires publiés ✓" : "Horaires absents"}
             </span>
-            <span className="rounded border border-surface-border bg-surface-overlay px-1.5 py-0.5 text-slate-400">
+            <span className="rounded-md border border-white/10 bg-white/6 px-1.5 py-0.5 text-slate-300 backdrop-blur-sm">
               {lead.venue.id}
             </span>
           </div>
@@ -135,7 +135,7 @@ export function AuditDrawer({
            * avec un bouton « Réessayer » — jamais d'écran vide ni silencieux.
            */}
           {error ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-red-400/45 bg-red-500/12 px-3 py-2 text-xs text-red-300 backdrop-blur-md">
               <span className="min-w-0 flex-1">{error}</span>
               <Button
                 size="sm"
@@ -151,10 +151,10 @@ export function AuditDrawer({
           {/* 0. Site quality check (when the venue already has a website) */}
           {lead.siteAudit ? (
             <section className="mb-6">
-              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <h3 className="mb-2 flex items-center gap-1.5 text-chrome text-xs font-semibold uppercase tracking-[0.14em]">
                 <Gauge size={13} className="text-sky-400" /> Qualité du site web
               </h3>
-              <div className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
+              <div className="glass glass-sheen rounded-xl px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide ${
@@ -184,20 +184,20 @@ export function AuditDrawer({
                   {lead.siteAudit.summary}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-500">
-                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                  <span className="rounded-md border border-white/12 bg-white/5 px-1.5 py-0.5 backdrop-blur-sm">
                     {lead.siteAudit.checks.https ? "HTTPS ✓" : "HTTPS ✗"}
                   </span>
-                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                  <span className="rounded-md border border-white/12 bg-white/5 px-1.5 py-0.5 backdrop-blur-sm">
                     {lead.siteAudit.checks.loadMs != null
                       ? `chargement ${(lead.siteAudit.checks.loadMs / 1000).toFixed(1)} s`
                       : "vitesse indéterminée"}
                   </span>
-                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                  <span className="rounded-md border border-white/12 bg-white/5 px-1.5 py-0.5 backdrop-blur-sm">
                     {lead.siteAudit.checks.contentReliable
                       ? `${lead.siteAudit.checks.contentChars.toLocaleString()} caractères lus`
                       : "contenu illisible"}
                   </span>
-                  <span className="rounded border border-surface-border px-1.5 py-0.5">
+                  <span className="rounded-md border border-white/12 bg-white/5 px-1.5 py-0.5 backdrop-blur-sm">
                     {lead.siteAudit.checks.hasContact ? "contact ✓" : "aucun contact affiché"}
                   </span>
                 </div>
@@ -220,7 +220,7 @@ export function AuditDrawer({
           ) : null}
 
           {!audit && !auditing ? (
-            <div className="rounded-lg border border-dashed border-surface-border bg-surface-overlay/50 p-6 text-center">
+            <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-6 text-center backdrop-blur-md">
               <FileText size={26} className="mx-auto mb-2 text-slate-600" />
               <p className="text-sm text-slate-300">Aucune analyse enregistrée pour ce commerce.</p>
               <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">
@@ -265,7 +265,7 @@ export function AuditDrawer({
               {/* 1. Gap report */}
               <section>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <h3 className="flex items-center gap-1.5 text-chrome text-xs font-semibold uppercase tracking-[0.14em]">
                     <Target size={13} className="text-accent" /> Rapport de présence numérique
                   </h3>
                   {audit.gapReport ? (
@@ -278,7 +278,7 @@ export function AuditDrawer({
                   ) : null}
                 </div>
                 {audit.gapReport ? (
-                  <div className="md-body rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
+                  <div className="md-body glass glass-sheen rounded-xl px-4 py-3">
                     <ReactMarkdown>{audit.gapReport}</ReactMarkdown>
                     {/* curseur de streaming visible pendant la génération */}
                     {auditing ? (
@@ -295,7 +295,7 @@ export function AuditDrawer({
               {/* 2. Outreach */}
               <section>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <h3 className="flex items-center gap-1.5 text-chrome text-xs font-semibold uppercase tracking-[0.14em]">
                     <MessageSquare size={13} className="text-accent" /> Message de premier contact
                   </h3>
                   <div className="flex items-center gap-1.5">
@@ -351,7 +351,7 @@ export function AuditDrawer({
               {/* 3. Action plan */}
               <section>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <h3 className="flex items-center gap-1.5 text-chrome text-xs font-semibold uppercase tracking-[0.14em]">
                     <FileText size={13} className="text-accent" /> Plan d'action — 3 prestations
                   </h3>
                   <button
@@ -366,7 +366,7 @@ export function AuditDrawer({
                     {audit.actionPlan.map((item, i) => (
                       <li
                         key={i}
-                        className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-2.5 text-[13px] text-slate-200"
+                        className="glass glass-sheen rounded-xl px-4 py-2.5 text-[13px] text-slate-200"
                       >
                         <span className="mr-2 font-bold text-accent">{i + 1}.</span>
                         {item}
@@ -392,7 +392,7 @@ export function AuditDrawer({
         </div>
 
         {/* Footer */}
-        <footer className="flex items-center justify-between border-t border-surface-border px-5 py-3">
+        <footer className="flex items-center justify-between border-t border-white/10 px-5 py-3">
           <span className="text-[11px] text-slate-500">
             {lead.venue.phone
               ? `Contact : ${lead.venue.phone}`

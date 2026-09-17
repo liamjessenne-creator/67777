@@ -29,7 +29,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
     <div className={`space-y-4 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
       <div>
         <div className="mb-1.5 flex items-center justify-between">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <span className="text-chrome font-mono text-[10px] font-semibold uppercase tracking-[0.2em]">
             Types de commerce
           </span>
           <div className="flex gap-1">
@@ -52,10 +52,10 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
           {TYPE_ORDER.map((t) => (
             <label
               key={t}
-              className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1.5 text-[11px] transition-colors ${
+              className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] transition-colors ${
                 venueTypes[t]
-                  ? "border-accent/50 bg-accent/10 text-emerald-300 shadow-glow-sm"
-                  : "border-surface-border bg-surface-raised text-slate-400 hover:border-slate-500"
+                  ? "border-accent/50 bg-accent/12 text-emerald-200 shadow-glow-sm backdrop-blur-md"
+                  : "border-white/10 bg-white/5 text-slate-400 backdrop-blur-md hover:border-slate-300/40"
               }`}
             >
               <input
@@ -70,8 +70,8 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
         </div>
       </div>
 
-      <div className="border-t border-surface-border pt-3">
-        <span className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+      <div className="border-t border-white/10 pt-3">
+        <span className="text-chrome mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em]">
           Seuil de présence numérique
         </span>
         <div className="space-y-1.5">
@@ -105,7 +105,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
                 })
               }
               disabled={digital.maxReviews == null}
-              className="w-16 rounded border border-surface-border bg-surface-raised px-1.5 py-0.5 text-xs text-slate-200 disabled:opacity-40"
+              className="w-16 rounded-lg border border-white/15 bg-black/35 px-1.5 py-0.5 text-xs text-slate-100 backdrop-blur-md disabled:opacity-40"
             />
             <span>avis Google</span>
           </div>
@@ -121,22 +121,22 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
         </div>
       </div>
 
-      <div className="border-t border-surface-border pt-3">
-        <span className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+      <div className="border-t border-white/10 pt-3">
+        <span className="text-chrome mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em]">
           Légende
         </span>
         <ul className="space-y-1 text-[11px] text-slate-400">
           <li className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" />
-            Rouge — cible prioritaire
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(168,40,63,0.8)]" />
+            Bordeaux — cible prioritaire
           </li>
           <li className="flex items-center gap-2">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
-            Jaune — priorité moyenne
+            Laiton — priorité moyenne
           </li>
           <li className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            Vert — présence numérique solide (à écarter)
+            <span className="dot-accent inline-block h-2.5 w-2.5 rounded-full" />
+            Bleu — présence numérique solide (à écarter)
           </li>
         </ul>
       </div>
