@@ -3,7 +3,7 @@
 import { Copy, ExternalLink, FileText, Gauge, Globe, MessageSquare, RefreshCw, Target, X } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import LinkPreview from "./LinkPreview";
+import LinkPreview, { SiteShot } from "./LinkPreview";
 import type { AiAudit, Lead } from "./types";
 import { VENUE_TYPE_LABELS } from "./types";
 import { PRIORITY_LABELS, priorityBadgeClass } from "./stats";
@@ -208,7 +208,14 @@ export function AuditDrawer({
                     <ExternalLink size={11} />
                   </a>
                 </div>
-                <p className="mt-2 text-[13px] leading-relaxed text-slate-300">
+                {/*
+                 * Vignette EN LIGNE (et non en survol) : sur téléphone il n'y a
+                 * pas de survol, la fiche montrait donc une simple ligne de
+                 * texte. Le cliché arrive du même cache que l'aperçu flottant,
+                 * et un clic ouvre le site.
+                 */}
+                <SiteShot site={lead.siteAudit.url} className="mt-3" />
+                <p className="mt-3 text-[13px] leading-relaxed text-slate-300">
                   {lead.siteAudit.summary}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-500">

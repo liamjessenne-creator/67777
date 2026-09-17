@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Facebook, Gauge, Globe, Phone, SearchCheck } from "lucide-react";
 import LinkPreview from "./LinkPreview";
+import { preloadShot } from "./thumbnails";
 import { Button, Spinner } from "./ui";
 import type { Lead } from "./types";
 import { LEAD_STATUS_LABELS, VENUE_TYPE_LABELS } from "./types";
@@ -9,19 +10,12 @@ import { priorityBadgeClass } from "./stats";
 
 /**
  * Aperçu des sites déjà en ligne (composant fourni « Link Preview »).
- * L'image est produite par l'API Microlink : on la PRÉCHAUFFE au survol de la
- * cellule, sinon l'aperçu s'ouvrirait vide pendant ~6 s (temps de génération
- * du cliché côté service).
+ * Le cliché est PRÉCHAUFFÉ dès que le pointeur touche la cellule, sinon la
+ * carte s'ouvrirait sur son squelette pendant ~4 s (génération du cliché).
+ *`preloadShot` mutualise les requêtes et mémorise le résultat : la même
+ * enseigne (souvent présente plusieurs fois) n'est demandée qu'une fois.
  */
-const warmed = new Set<string>();
-const shotUrl = (site: string) =>
-  `https://api.microlink.io/?url=${encodeURIComponent(site)}&embed=image.url`;
-function warmShot(site: string) {
-  if (warmed.has(site)) return;
-  warmed.add(site);
-  const img = new Image();
-  img.src = shotUrl(site);
-}
+const warmShot = preloadShot;
 
 /** Taille d'aperçu adaptée à la largeur disponible (jamais de débordement). */
 function previewSize(): { w: number; h: number } {

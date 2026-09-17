@@ -320,6 +320,40 @@ body {
   }
 }
 
+/*
+ * Squelette de chargement des aperçus de site (vignettes « Link Preview »).
+ * Balayage lent d'un reflet sur fond sombre : on voit qu'un cliché est en
+ * route, au lieu de l'ancien cadre blanc vide.
+ */
+.thumb-skeleton {
+  background:
+    linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.02) 0%,
+      rgba(255, 255, 255, 0.10) 42%,
+      rgba(255, 255, 255, 0.03) 68%,
+      rgba(255, 255, 255, 0.02) 100%
+    ),
+    rgba(8, 11, 16, 0.72);
+  background-size: 260% 100%;
+  animation: thumb-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes thumb-shimmer {
+  0% {
+    background-position: 130% 0;
+  }
+  100% {
+    background-position: -30% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb-skeleton {
+    animation: none !important;
+  }
+}
+
 /* Bordure lumineuse animée (cartes mises en avant, bouton principal). */
 .liquid-edge {
   position: relative;

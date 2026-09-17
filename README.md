@@ -149,7 +149,8 @@ React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · canvas globe (zero 
 - **Chrome text** — `.text-chrome` / `.text-chrome-live` paint headlines, headers and key figures with a brushed-metal gradient (brushed band + moving sheen).
 - **Liquid glass widgets** — `.glass`, `.glass-strong`, `.glass-live` and the `.carve-glass*` button shells: translucent gradient, `backdrop-filter` blur + saturation, lit top edge and an inner bottom shadow.
 - **Palette** — chrome/silver ramp for text, **blue ⇄ white animated** (`#61b8ff`) as the single accent (positive states included), **classes Bordeaux** (`#a8283f` / `#d2647c`) for errors and priority targets, discreet **brass** for “to be confirmed”.
-- **Provided components**, kept faithful to their source: `GlobeStudy.tsx` (chrome wireframe globe, letters on the continents, click to drop a pin), `LiquidCarveButton.tsx` (buttons), `ChromeCells.tsx` (page background), `LinkPreview.tsx` (site thumbnails on hover, via Microlink).
+- **Provided components**, kept faithful to their source: `GlobeStudy.tsx` (chrome wireframe globe, letters on the continents, click to drop a pin), `LiquidCarveButton.tsx` (buttons), `ChromeCells.tsx` (page background), `LinkPreview.tsx` (site thumbnails on hover **and** inline in the prospect sheet).
+- **Site thumbnails** (`thumbnails.ts`) — real page screenshots (JPEG q72) instead of the site's share image, which was frequently a 96 px logo, an SVG or an outright failure. Results are cached in memory + `localStorage`, one request per domain, preloaded on hover, and an unreachable site shows a clean fallback card instead of an empty frame.
 
 ## Project layout
 
@@ -166,7 +167,7 @@ tailwind.config.js  storage.ts         nominatim.ts        SettingsModal.tsx
                     GlobeStudy.tsx     stats.ts            LegalPages.tsx
                     ChromeCells.tsx    export.ts           ErrorBoundary.tsx
                     LiquidCarveButton.tsx  useDebouncedValue.ts
-                    LinkPreview.tsx
+                    LinkPreview.tsx    thumbnails.ts
                     net.test.ts  aiProxy.test.ts  enrichment.test.ts
 ```
 
@@ -175,7 +176,7 @@ Plus the AI gateway: `supabase/functions/groq/index.ts` (see `supabase/README.md
 ## Notes
 
 - Public APIs (Nominatim, Photon, Overpass) are rate-limited — the app retries with backoff and falls back between mirrors/geocoders automatically.
-- The AI website discovery infers the official domain from the venue's name; verified links were confirmed reachable (blue), unverified ones are plausible but unconfirmed (brass) — hover any of them for a live thumbnail of the page.
+- The AI website discovery infers the official domain from the venue's name; verified links were confirmed reachable (blue), unverified ones are plausible but unconfirmed (brass) — hover any of them for a live screenshot of the page (keyboard focus works too, and the prospect sheet embeds the screenshot so it is visible on phones).
 - 🔐 **No secrets are committed.** The key lives in `.env.local` (gitignored) or in your browser's localStorage. If you ever leaked a key publicly, rotate it from your [Groq console](https://console.groq.com).
 
 ## License
