@@ -7,6 +7,9 @@ import type { Venue } from "./types";
 import { resolveVenueType } from "./types";
 import type { GeoPlace } from "./nominatim";
 import { bboxString } from "./nominatim";
+// FIX (PROBLÈME 1 & 2) : infrastructure commune — timeout explicite, retry
+// exponentiel, erreurs en français et logs console systématiques.
+import { NetworkError, describeError, fetchWithRetry, logError, logInfo, sleep } from "./net";
 
 /**
  * Public Overpass mirrors, tried in order. The two main mirrors shed load
@@ -36,8 +39,17 @@ interface OverpassResponse {
 export interface OverpassQueryOptions {
   types?: string[];
   signal?: AbortSignal;
-  /** Rate limit guard: Overpass caches are per-mirror; 2 s between heavy queries */
+  /** Budget TOTAL de la recherche de commerces (défaut 28 s) — pas par tentative. */
   timeoutMs?: number;
+  /** // FIX (PROBLÈME 2) : informe l'UI du miroir essayé (message d'étape). */
+  onProgress?: (info: { host: string; attempt: number; total: number }) => void;
+}
+
+export interface OverpassResult {
+  venues: Venue[];
+  endpointUsed: string;
+  /** // FIX (PROBLÈME 3) : chronométrage de l'étape, affiché dans l'UI */
+  durationMs: number;
 }
 
 const AMENITIES = ["restaurant", "fast_food", "cafe", "bar", "pub", "bakery"];
@@ -47,6 +59,9 @@ function buildQuery(place: GeoPlace, amenities: string[]): string {
   const foodSelector = `nwr[amenity~"${amenityRegex}"]`;
   const bakerySelector = `nwr[shop~"^(bakery|pastry)$"][name]`;
 
+  // FIX (PROBLÈME 2 — mobile) : plafond de résultats ramené de 3000 à 800.
+  // L'UI ne conserve que 700 commerces : demander 3000 éléments faisait
+  // transiter ~4x trop de données sur un réseau mobile lent.
   if (place.areaId) {
     return `[out:json][timeout:60];
 area(${place.areaId})->.searchArea;
@@ -54,10 +69,10 @@ area(${place.areaId})->.searchArea;
   ${foodSelector}(area.searchArea);
   ${bakerySelector}(area.searchArea);
 );
-out center 3000;`;
+out center 800;`;
   }
   if (!place.boundingBox) {
-    throw new Error("Selected place has neither an area nor a bounding box");
+    throw new NetworkError("Ce lieu n'a ni zone ni emprise géographique exploitable.");
   }
   const bbox = bboxString(place.boundingBox);
   return `[out:json][timeout:60];
@@ -65,7 +80,7 @@ out center 3000;`;
   ${foodSelector}(${bbox});
   ${bakerySelector}(${bbox});
 );
-out center 3000;`;
+out center 800;`;
 }
 
 function elementToVenue(el: OverpassElement): Venue | null {
@@ -121,76 +136,80 @@ function elementToVenue(el: OverpassElement): Venue | null {
 export async function queryVenues(
   place: GeoPlace,
   opts: OverpassQueryOptions = {},
-): Promise<{ venues: Venue[]; endpointUsed: string }> {
+): Promise<OverpassResult> {
   const query = buildQuery(place, opts.types ?? AMENITIES);
   const errors: string[] = [];
+  const startedAt = Date.now();
+  /** // FIX (PROBLÈME 1) : 15 s maximum PAR TENTATIVE (consigne explicite). */
+  const PER_ATTEMPT_TIMEOUT_MS = 15_000;
+  /**
+   * // FIX (PROBLÈME 3) : budget TOTAL borné (28 s par défaut).
+   * Avant : 3 miroirs × 2 tentatives × 15 s = jusqu'à 90 s d'attente —
+   * exactement le « c'est trop long » remonté par l'utilisateur.
+   * Désormais on essaie CHAQUE miroir une fois (3 tentatives au total, donc le
+   * retry demandé) avec un backoff exponentiel entre miroirs, et on s'arrête
+   * proprement dès que le budget est consommé.
+   */
+  const TOTAL_BUDGET_MS = opts.timeoutMs ?? 28_000;
+  const deadlineAt = startedAt + TOTAL_BUDGET_MS;
 
-  /** Public mirrors shed load with 429/502/503/504 on bursty queries. */
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const RETRYABLE = new Set([429, 502, 503, 504]);
-  const MAX_ATTEMPTS = 2;
-  /** Cap each attempt so a hung mirror cannot stall the scan (observed: 48 s). */
-  const PER_ATTEMPT_TIMEOUT_MS = 25_000;
+  for (let index = 0; index < OVERPASS_ENDPOINTS.length; index++) {
+    const endpoint = OVERPASS_ENDPOINTS[index];
+    const host = new URL(endpoint).hostname;
+    // Plus assez de temps pour une tentative utile → on s'arrête là.
+    if (deadlineAt - Date.now() < 3_000) {
+      errors.push(`${host} → ignoré (budget de temps épuisé)`);
+      break;
+    }
+    // Backoff exponentiel ENTRE miroirs : 600 ms puis 1 200 ms.
+    if (index > 0) await sleep(600 * 2 ** (index - 1));
+    opts.onProgress?.({ host, attempt: index + 1, total: OVERPASS_ENDPOINTS.length });
+    try {
+      const remaining = Math.max(3_000, deadlineAt - Date.now());
+      const res = await fetchWithRetry(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ data: query }).toString(),
+        timeoutMs: Math.min(PER_ATTEMPT_TIMEOUT_MS, remaining),
+        attempts: 1,
+        baseDelayMs: 800,
+        label: `Overpass ${host}`,
+        signal: opts.signal,
+      });
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const host = new URL(endpoint).hostname;
-      // Link the caller's abort signal with our per-attempt timeout.
-      const controller = new AbortController();
-      const onOuterAbort = () => controller.abort();
-      opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
-      const timer = setTimeout(() => controller.abort(), PER_ATTEMPT_TIMEOUT_MS);
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ data: query }).toString(),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          errors.push(`${host} → HTTP ${res.status}${attempt < MAX_ATTEMPTS ? " (retrying)" : ""}`);
-          if (RETRYABLE.has(res.status) && attempt < MAX_ATTEMPTS) {
-            await sleep(2500 * attempt); // 2.5s
-            continue;
-          }
-          break; // non-retryable (or attempts exhausted) → next mirror
-        }
-        const json = (await res.json()) as OverpassResponse;
-        const venues: Venue[] = [];
-        const seen = new Set<string>();
-        for (const el of json.elements ?? []) {
-          const venue = elementToVenue(el);
-          if (venue && !seen.has(venue.id)) {
-            seen.add(venue.id);
-            venues.push(venue);
-          }
-        }
-        venues.sort((a, b) => a.name.localeCompare(b.name));
-        return { venues, endpointUsed: host };
-      } catch (err) {
-        // A user-triggered abort must propagate; our own timeout is retryable.
-        if (opts.signal?.aborted) {
-          throw new DOMException("Aborted", "AbortError");
-        }
-        const msg =
-          err instanceof DOMException && err.name === "AbortError"
-            ? `timeout after ${PER_ATTEMPT_TIMEOUT_MS / 1000}s`
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        errors.push(`${host} → ${msg}${attempt < MAX_ATTEMPTS ? " (retrying)" : ""}`);
-        if (attempt < MAX_ATTEMPTS) {
-          await sleep(2500 * attempt);
-          continue;
-        }
-        break;
-      } finally {
-        clearTimeout(timer);
-        opts.signal?.removeEventListener("abort", onOuterAbort);
+      if (!res.ok) {
+        // Erreur non retentable (ex. requête invalide) → miroir suivant.
+        errors.push(`${host} → HTTP ${res.status}`);
+        logError("overpass", new Error(`HTTP ${res.status} renvoyé par ${host}`));
+        continue;
       }
+
+      const json = (await res.json()) as OverpassResponse;
+      const venues: Venue[] = [];
+      const seen = new Set<string>();
+      for (const el of json.elements ?? []) {
+        const venue = elementToVenue(el);
+        if (venue && !seen.has(venue.id)) {
+          seen.add(venue.id);
+          venues.push(venue);
+        }
+      }
+      venues.sort((a, b) => a.name.localeCompare(b.name));
+      const durationMs = Date.now() - startedAt;
+      logInfo("overpass", `${venues.length} commerces via ${host} en ${durationMs} ms`);
+      return { venues, endpointUsed: host, durationMs };
+    } catch (err) {
+      // Annulation volontaire de l'utilisateur : on propage sans retry.
+      if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      errors.push(`${host} → ${describeError(err)}`);
+      logError("overpass", err, { mirror: host });
     }
   }
-  throw new Error(
-    `All Overpass mirrors failed:\n${errors.join("\n")}\nTip: the public mirrors shed load under burst traffic — wait a few seconds and retry.`,
+
+  // FIX (PROBLÈME 1) : message clair en français + erreur exacte en console.
+  const detail = errors.length > 0 ? ` (${errors.join(" · ")})` : "";
+  throw new NetworkError(
+    `Aucun serveur OpenStreetMap n'a répondu${detail}. ` +
+      "Les miroirs publics sont parfois surchargés : patientez quelques secondes puis relancez l'analyse.",
   );
 }

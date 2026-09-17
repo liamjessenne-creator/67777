@@ -10,6 +10,23 @@ import { Button, Spinner } from "./ui";
 
 type OutreachChannel = "sms" | "whatsapp" | "email";
 
+/**
+ * // FIX (PROBLÈME 3) : bloc « en cours de génération ». Le tiroir n'attend plus
+ * la fin des 4 appels IA : chaque section apparaît dès que son contenu arrive.
+ */
+function SectionSkeleton({ label }: { label: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-surface-border bg-surface-overlay/40 px-4 py-3">
+      <div className="space-y-2">
+        <div className="h-2.5 w-3/4 animate-pulse rounded bg-slate-700/60" />
+        <div className="h-2.5 w-2/3 animate-pulse rounded bg-slate-700/40" />
+        <div className="h-2.5 w-1/2 animate-pulse rounded bg-slate-700/30" />
+      </div>
+      <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
+    </div>
+  );
+}
+
 interface Props {
   lead: Lead | null;
   onClose: () => void;
@@ -203,36 +220,63 @@ export function AuditDrawer({
             </div>
           ) : null}
 
-          {auditing ? (
+          {/* FIX (PROBLÈME 3) : spinner seulement tant qu'AUCUN bloc n'est prêt —
+              ensuite les sections s'affichent progressivement (streaming). */}
+          {auditing && !audit ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Spinner size={28} />
               <p className="text-sm text-slate-400">
-                AI agent auditing <span className="text-slate-200">{lead.venue.name}</span>…
+                L'agent IA analyse <span className="text-slate-200">{lead.venue.name}</span>…
               </p>
               <p className="text-[11px] text-slate-600">
-                Gap report → outreach draft → action plan (3 parallel LLM calls)
+                4 appels IA en parallèle : rapport d'écart, message de contact, plan d'action,
+                recherche du site officiel.
               </p>
             </div>
           ) : null}
 
           {audit ? (
             <div className="space-y-6">
+              {/* FIX (PROBLÈME 1) : les échecs partiels sont AFFICHÉS, plus jamais silencieux. */}
+              {audit.warnings && audit.warnings.length > 0 ? (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  <p className="font-semibold">Certains blocs n'ont pas pu être générés :</p>
+                  <ul className="mt-1 list-disc pl-4">
+                    {audit.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               {/* 1. Gap report */}
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
                     <Target size={13} className="text-accent" /> Digital Gap Report
                   </h3>
-                  <button
-                    onClick={() => copy(audit.gapReport, "gap")}
-                    className="text-[11px] text-slate-500 hover:text-accent"
-                  >
-                    {copied === "gap" ? "Copied!" : <Copy size={12} />}
-                  </button>
+                  {audit.gapReport ? (
+                    <button
+                      onClick={() => copy(audit.gapReport, "gap")}
+                      className="text-[11px] text-slate-500 hover:text-accent"
+                    >
+                      {copied === "gap" ? "Copié !" : <Copy size={12} />}
+                    </button>
+                  ) : null}
                 </div>
-                <div className="md-body rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
-                  <ReactMarkdown>{audit.gapReport}</ReactMarkdown>
-                </div>
+                {audit.gapReport ? (
+                  <div className="md-body rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-3">
+                    <ReactMarkdown>{audit.gapReport}</ReactMarkdown>
+                    {/* curseur de streaming visible pendant la génération */}
+                    {auditing ? (
+                      <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
+                    ) : null}
+                  </div>
+                ) : (
+                  <SectionSkeleton
+                    label={auditing ? "Rédaction du rapport d'écart…" : "Non généré — relancez l'audit."}
+                  />
+                )}
               </section>
 
               {/* 2. Outreach */}
@@ -267,14 +311,27 @@ export function AuditDrawer({
                     </button>
                   </div>
                 </div>
-                <div className="whitespace-pre-wrap rounded-lg border border-accent/25 bg-accent/5 px-4 py-3 text-[13px] leading-relaxed text-slate-200">
-                  {audit.outreach}
-                </div>
+                {audit.outreach ? (
+                  <div className="whitespace-pre-wrap rounded-lg border border-accent/25 bg-accent/5 px-4 py-3 text-[13px] leading-relaxed text-slate-200">
+                    {audit.outreach}
+                    {auditing ? (
+                      <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
+                    ) : null}
+                  </div>
+                ) : (
+                  <SectionSkeleton
+                    label={
+                      auditing
+                        ? "Rédaction du message de contact…"
+                        : "Non généré (erreur IA) — relancez l'audit."
+                    }
+                  />
+                )}
                 <button
                   onClick={() => onRegenerateOutreach(lead, channel)}
                   className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-accent"
                 >
-                  <RefreshCw size={11} /> Regenerate for {channel}
+                  <RefreshCw size={11} /> Régénérer en {channel}
                 </button>
               </section>
 
@@ -291,17 +348,27 @@ export function AuditDrawer({
                     {copied === "plan" ? "Copied!" : <Copy size={12} />}
                   </button>
                 </div>
-                <ol className="space-y-2">
-                  {audit.actionPlan.map((item, i) => (
-                    <li
-                      key={i}
-                      className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-2.5 text-[13px] text-slate-200"
-                    >
-                      <span className="mr-2 font-bold text-accent">{i + 1}.</span>
-                      {item}
-                    </li>
-                  ))}
-                </ol>
+                {audit.actionPlan.length > 0 ? (
+                  <ol className="space-y-2">
+                    {audit.actionPlan.map((item, i) => (
+                      <li
+                        key={i}
+                        className="rounded-lg border border-surface-border bg-surface-overlay/60 px-4 py-2.5 text-[13px] text-slate-200"
+                      >
+                        <span className="mr-2 font-bold text-accent">{i + 1}.</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <SectionSkeleton
+                    label={
+                      auditing
+                        ? "Construction du plan d'action…"
+                        : "Non généré (erreur IA) — relancez l'audit."
+                    }
+                  />
+                )}
               </section>
 
               <p className="text-[10px] text-slate-600">

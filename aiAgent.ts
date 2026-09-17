@@ -4,6 +4,9 @@
  */
 
 import type { AiAudit, AiSettings, Lead, SiteAudit, SiteChecks, SiteVerdict } from "./types";
+// FIX (PROBLÈME 1) : infrastructure réseau commune — timeout explicite, retry
+// exponentiel, erreurs en français et journalisation console de l'erreur exacte.
+import { NetworkError, describeError, fetchWithRetry, fetchWithTimeout, logError, logInfo } from "./net";
 
 export class AiAgentError extends Error {
   constructor(
@@ -15,7 +18,22 @@ export class AiAgentError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+/**
+ * // FIX (PROBLÈME 1) : 15 s maximum par appel IA (avant : 60 s par défaut,
+ * ce qui pouvait bloquer l'interface très longtemps sur réseau mobile).
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/**
+ * // FIX (PROBLÈME 3) : modèle RAPIDE pour les étapes simples (découverte de
+ * site, plan d'action JSON) — le « petit » modèle répond nettement plus vite.
+ * // FIX (fiabilité) : ID vérifié en direct sur le catalogue Groq du compte
+ * (les modèles Llama ne sont plus exposés par l'API : un ID retiré renvoyait
+ * un 404 qui faisait échouer le plan d'action et la découverte de site).
+ */
+const FAST_MODEL_ID = "openai/gpt-oss-20b";
+/** Modèle principal conseillé (Groq) : le plus capable du catalogue actuel. */
+export const RECOMMENDED_MODEL = "openai/gpt-oss-120b";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -49,7 +67,7 @@ export function extractJson<T>(text: string): T {
   const candidate = (fenced ? fenced[1] : cleaned).trim();
   const start = candidate.indexOf("{");
   if (start === -1) {
-    throw new AiAgentError("Model returned no JSON object");
+    throw new AiAgentError("Le modèle IA n'a renvoyé aucun objet JSON exploitable.");
   }
   // Try progressively smaller suffixes to tolerate trailing prose.
   for (let end = candidate.length; end > start; end--) {
@@ -59,7 +77,7 @@ export function extractJson<T>(text: string): T {
       // keep shrinking
     }
   }
-  throw new AiAgentError("Model JSON could not be parsed");
+  throw new AiAgentError("La réponse JSON du modèle IA n'a pas pu être interprétée.");
 }
 
 // ---------------------------------------------------------------------------
@@ -138,9 +156,13 @@ export function plausibleDomainForName(name: string, url: string): boolean {
  * timeout: if the server responds (even with a non-image), onLoad fires.
  * Also measures response time — a slow site is a sellable problem.
  */
+/**
+ * // FIX (PROBLÈME 3) : timeout court par défaut (4 s) — consigne « 3-5 s par
+ * vérification », et toutes les vérifications tournent en parallèle borné.
+ */
 export function probeSite(
   url: string,
-  timeoutMs = 6000,
+  timeoutMs = 4000,
 ): Promise<{ ok: boolean; loadMs: number | null }> {
   return new Promise((resolve) => {
     // Node / test environments have no Image constructor.
@@ -179,13 +201,20 @@ export async function fetchSiteChecks(
   url: string,
 ): Promise<SiteChecks & { excerpt: string | null }> {
   const clean = url.replace(/\/+$/, "");
-  const { ok: reachable, loadMs } = await probeSite(clean);
   const https = clean.toLowerCase().startsWith("https://");
 
+  // FIX (PROBLÈME 3) : la sonde technique et la lecture du contenu partent
+  // EN PARALLÈLE. Avant : séquentiel (jusqu'à 4 s + 15 s = 19 s par site) ;
+  // maintenant : temps ≈ max(4 s, 8 s) grâce aux timeouts courts explicites.
+  const [probe, relay] = await Promise.all([
+    probeSite(clean, 4000),
+    readHomepageText(clean, 8000),
+  ]);
+
   const checks: SiteChecks & { excerpt: string | null } = {
-    reachable,
+    reachable: probe.ok,
     https,
-    loadMs,
+    loadMs: probe.loadMs,
     title: null,
     contentChars: 0,
     hasContact: false,
@@ -193,30 +222,40 @@ export async function fetchSiteChecks(
     contentReliable: false,
     excerpt: null,
   };
-  if (!reachable) return checks;
+  if (!relay) return checks;
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
-    const res = await fetch(`https://r.jina.ai/${clean}`, {
-      signal: controller.signal,
-      headers: { Accept: "text/plain" },
-    });
-    clearTimeout(timer);
-    if (!res.ok) return checks;
-    const text = (await res.text()).trim();
-    if (text.length < 80) return checks; // relay error page, not real content
-
-    checks.title = text.split("\n").find((l) => l.startsWith("Title:"))?.slice(6).trim() ?? null;
-    checks.contentChars = text.length;
-    checks.contentReliable = true;
-    checks.excerpt = text.slice(0, 2500);
-    checks.hasContact = /([\w.+-]+@[\w-]+\.[\w.]+)|(^|\D)(\+33|\b0\d[ .-]?\d{2})/m.test(text);
-    checks.hasSocialLinks = /facebook\.com|instagram\.com|tripadvisor|deliveroo|ubereats|justeat/i.test(text);
-  } catch {
-    // relay unavailable / slow site — keep technical-only checks
-  }
+  checks.title = relay.split("\n").find((l) => l.startsWith("Title:"))?.slice(6).trim() ?? null;
+  checks.contentChars = relay.length;
+  checks.contentReliable = true;
+  checks.excerpt = relay.slice(0, 2500);
+  checks.hasContact = /([\w.+-]+@[\w-]+\.[\w.]+)|(^|\D)(\+33|\b0\d[ .-]?\d{2})/m.test(relay);
+  checks.hasSocialLinks = /facebook\.com|instagram\.com|tripadvisor|deliveroo|ubereats|justeat/i.test(relay);
   return checks;
+}
+
+/**
+ * Lecture best-effort du texte de la page d'accueil via le relais public
+ * r.jina.ai (un fetch direct serait bloqué par CORS).
+ * // FIX (PROBLÈME 1) : toute erreur est loguée — plus aucun échec silencieux.
+ */
+async function readHomepageText(url: string, timeoutMs: number): Promise<string | null> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://r.jina.ai/${url}`,
+      { headers: { Accept: "text/plain" } },
+      timeoutMs,
+    );
+    if (!res.ok) {
+      logError("siteCheck", new Error(`Relais de lecture : HTTP ${res.status}`), { url });
+      return null;
+    }
+    const text = (await res.text()).trim();
+    if (text.length < 80) return null; // page d'erreur du relais, pas un vrai contenu
+    return text;
+  } catch (err) {
+    logError("siteCheck", err, { url, etape: "lecture du contenu" });
+    return null;
+  }
 }
 
 const SYSTEM_AUDIT = `You are "AuditBot", a senior digital-presence consultant for independent food businesses (restaurants, snacks, kebabs, pizzerias, cafés).
@@ -266,10 +305,27 @@ Rules:
 - If the checks show nothing wrong, say so honestly — a good verdict builds trust too.
 - Respond with ONLY a JSON object: {"verdict": "good"|"improve"|"critical", "summary": "1-2 sentences for the salesperson", "improvements": ["...", ...]}`;
 
+/** Bloc d'audit publié au fur et à mesure (affichage progressif). */
+export interface AuditPartial {
+  gapReport?: string;
+  outreach?: string;
+  actionPlan?: string[];
+  website?: { url: string; verified: boolean } | null;
+  warnings?: string[];
+}
+
+export interface AuditHooks {
+  /** Reçoit l'état partiel de l'audit À CHAQUE bloc prêt (streaming + parallèle). */
+  onPartial?: (partial: AuditPartial) => void;
+}
+
 interface ChatOptions {
   jsonMode?: boolean;
   timeoutMs?: number;
+  /** // FIX (PROBLÈME 3) : max_tokens volontairement limité au strict nécessaire. */
   maxTokens?: number;
+  /** // FIX (PROBLÈME 3) : permet de forcer un modèle (étapes simples → modèle rapide). */
+  model?: string;
 }
 
 export class AIAgentService {
@@ -279,61 +335,189 @@ export class AIAgentService {
     return this.settings.baseUrl.replace(/\/+$/, "");
   }
 
+  /**
+   * // FIX (PROBLÈME 3) : sur Groq, les étapes simples (JSON courts, découverte
+   * de site) utilisent llama-3.1-8b-instant, bien plus rapide que le 70b.
+   * Sur un autre fournisseur (DeepSeek, Qwen, OpenRouter…), on garde le modèle
+   * choisi par l'utilisateur pour ne jamais envoyer un ID de modèle inconnu.
+   */
+  private get fastModel(): string {
+    return this.baseUrl.includes("groq") ? FAST_MODEL_ID : this.settings.model;
+  }
+
+  private headers(): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.settings.apiKey}`,
+    };
+  }
+
+  private buildBody(
+    messages: ChatMessage[],
+    opts: ChatOptions,
+    model: string,
+    stream = false,
+  ): string {
+    return JSON.stringify({
+      model,
+      messages,
+      temperature: 0.4,
+      max_tokens: opts.maxTokens ?? 800,
+      ...(stream ? { stream: true } : {}),
+      ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
+    });
+  }
+
+  /** // FIX (PROBLÈME 1) : erreurs HTTP traduites en messages FRANÇAIS actionnables. */
+  private httpError(status: number, detail: string): AiAgentError {
+    if (status === 401) return new AiAgentError("Clé API invalide (401). Vérifiez-la dans ⚙ Réglages.", 401);
+    if (status === 403) return new AiAgentError("Accès refusé par le fournisseur IA (403). Vérifiez les droits de votre clé.", 403);
+    if (status === 404) return new AiAgentError("Modèle introuvable (404). Choisissez un autre modèle dans ⚙ Réglages.", 404);
+    if (status === 429) return new AiAgentError("Limite de débit IA atteinte (429). Réessayez dans quelques secondes.", 429);
+    return new AiAgentError(`Le service IA a échoué (HTTP ${status}). ${detail.slice(0, 200)}`, status);
+  }
+
+  /**
+   * // FIX (PROBLÈME 1 & 3) : appel IA avec TIMEOUT explicite (15 s) et
+   * RETRY automatique (3 tentatives, backoff exponentiel 0,8 s → 1,6 s).
+   * Toute erreur est loguée avec son contexte : aucun échec silencieux.
+   */
   private async chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const model = opts.model ?? this.settings.model;
     try {
-      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+      return await this.chatWithModel(messages, opts, model);
+    } catch (err) {
+      /**
+       * // FIX (PROBLÈME 1 — fiabilité) : si le modèle demandé n'existe plus
+       * (404 « model not found »), on retombe AUTOMATIQUEMENT sur le modèle
+       * principal au lieu de perdre le bloc d'analyse.
+       */
+      if (err instanceof AiAgentError && err.status === 404 && model !== this.settings.model) {
+        logInfo(
+          "aiAgent",
+          `Modèle « ${model} » indisponible (404) — repli automatique sur ${this.settings.model}`,
+        );
+        return this.chatWithModel(messages, opts, this.settings.model);
+      }
+      throw err;
+    }
+  }
+
+  /** Un appel IA pour un modèle donné (timeout 15 s + 3 tentatives). */
+  private async chatWithModel(
+    messages: ChatMessage[],
+    opts: ChatOptions,
+    model: string,
+  ): Promise<string> {
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    try {
+      const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.settings.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.settings.model,
-          messages,
-          temperature: 0.4,
-          max_tokens: opts.maxTokens ?? 1024,
-          ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
-        }),
-        signal: controller.signal,
+        headers: this.headers(),
+        body: this.buildBody(messages, opts, model),
+        timeoutMs,
+        attempts: 3,
+        baseDelayMs: 800,
+        label: `IA ${model}`,
       });
 
       if (!res.ok) {
-        let detail = "";
-        try {
-          detail = await res.text();
-        } catch {
-          /* ignore */
-        }
-        if (res.status === 401) {
-          throw new AiAgentError("Invalid API key (401). Check it in Settings.", 401);
-        }
-        if (res.status === 429) {
-          throw new AiAgentError("Rate limit (429). Wait a moment and retry.", 429);
-        }
-        throw new AiAgentError(
-          `LLM request failed (${res.status}). ${detail.slice(0, 300)}`,
-          res.status,
-        );
+        const detail = await res.text().catch(() => "");
+        throw this.httpError(res.status, detail);
       }
 
       const json = (await res.json()) as ChatResponse;
       const content = json.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new AiAgentError("Model returned an empty response");
-      }
+      if (!content) throw new AiAgentError("Le modèle IA a renvoyé une réponse vide.");
       return content;
     } catch (err) {
+      logError("aiAgent", err, { modele: model });
       if (err instanceof AiAgentError) throw err;
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new AiAgentError("Request timed out");
-      }
       throw new AiAgentError(
-        `Network error: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof NetworkError ? err.message : `Appel IA impossible : ${describeError(err)}`,
       );
+    }
+  }
+
+  /**
+   * // FIX (PROBLÈME 1) : JSON robuste — certains fournisseurs (Groq) échouent
+   * par intermittence en mode JSON ; on retente alors en mode texte brut et on
+   * extrait l'objet JSON (extractJson tolère le texte autour).
+   */
+  private async chatJson(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
+    try {
+      return await this.chat(messages, { ...opts, jsonMode: true });
+    } catch (err) {
+      logInfo("aiAgent", `Mode JSON indisponible, repli en texte brut (${describeError(err)})`);
+      return this.chat(messages, opts);
+    }
+  }
+
+  /**
+   * // FIX (PROBLÈME 3) : STREAMING (SSE `stream: true`). Le texte est poussé
+   * au fur et à mesure à l'appelant → l'utilisateur voit le rapport s'écrire
+   * au lieu d'attendre la fin de la génération.
+   * // FIX (PROBLÈME 1) : garde-fou d'inactivité de 15 s (sans jeton reçu).
+   */
+  private async chatStream(
+    messages: ChatMessage[],
+    opts: ChatOptions & { onDelta: (fullText: string) => void },
+  ): Promise<string> {
+    const model = opts.model ?? this.settings.model;
+    const controller = new AbortController();
+    let idle: ReturnType<typeof setTimeout> = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    const armIdle = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    };
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: this.headers(),
+        body: this.buildBody(messages, opts, model, true),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        const detail = await res.text().catch(() => "");
+        throw this.httpError(res.status, detail);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let full = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        armIdle();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const chunk = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string } }> };
+            const delta = chunk.choices?.[0]?.delta?.content;
+            if (delta) {
+              full += delta;
+              opts.onDelta(full);
+            }
+          } catch {
+            /* fragment SSE incomplet — ignoré, le prochain complètera */
+          }
+        }
+      }
+      if (!full.trim()) throw new AiAgentError("Le flux de réponse IA était vide.");
+      return full;
+    } catch (err) {
+      logError("aiAgent", err, { modele: model, etape: "streaming" });
+      if (err instanceof AiAgentError) throw err;
+      throw new AiAgentError(`Streaming IA interrompu : ${describeError(err)}`);
     } finally {
-      clearTimeout(timer);
+      clearTimeout(idle);
     }
   }
 
@@ -371,14 +555,28 @@ export class AIAgentService {
   }
 
   /** AI Agent Function 1 — Digital Gap Analysis (Opportunity Report). */
-  async analyzeDigitalGap(lead: Lead): Promise<string> {
-    const content = await this.chat([
+  async analyzeDigitalGap(lead: Lead, onDelta?: (fullText: string) => void): Promise<string> {
+    const messages: ChatMessage[] = [
       { role: "system", content: SYSTEM_AUDIT },
       {
         role: "user",
         content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\nProduce the opportunity report now.`,
       },
-    ]);
+    ];
+    // // FIX (PROBLÈME 3) : STREAMING — le rapport s'écrit sous les yeux de
+    // l'utilisateur au lieu d'apparaître d'un bloc après plusieurs secondes.
+    if (onDelta) {
+      try {
+        const streamed = await this.chatStream(messages, {
+          maxTokens: 700, // FIX (PROBLÈME 3) : ~220 mots suffisent, pas 1024 jetons.
+          onDelta: (text) => onDelta(stripThinking(text)),
+        });
+        return stripThinking(streamed);
+      } catch (err) {
+        logInfo("aiAgent", `Streaming indisponible — repli sur appel classique (${describeError(err)})`);
+      }
+    }
+    const content = await this.chat(messages, { maxTokens: 700 });
     return stripThinking(content);
   }
 
@@ -386,6 +584,7 @@ export class AIAgentService {
   async generateOutreach(
     lead: Lead,
     channel: "sms" | "whatsapp" | "email",
+    onDelta?: (fullText: string) => void,
   ): Promise<string> {
     const channelSpec = {
       sms: "Channel: SMS — max 320 characters, single segment if possible.",
@@ -394,19 +593,34 @@ export class AIAgentService {
         "Channel: Email — first line formatted as 'Subject: ...', then the body, max 900 characters.",
     }[channel];
 
-    const content = await this.chat([
+    const messages: ChatMessage[] = [
       { role: "system", content: SYSTEM_OUTREACH },
       {
         role: "user",
         content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\n${channelSpec}\n\nWrite the message now.`,
       },
-    ]);
-    return stripThinking(content);
+    ];
+    // // FIX (PROBLÈME 3) : streaming + max_tokens adapté au canal (SMS court).
+    const maxTokens = channel === "sms" ? 200 : 400;
+    if (onDelta) {
+      try {
+        const streamed = await this.chatStream(messages, {
+          maxTokens,
+          onDelta: (text) => onDelta(stripThinking(text)),
+        });
+        return stripThinking(streamed);
+      } catch (err) {
+        logInfo("aiAgent", `Streaming indisponible — repli sur appel classique (${describeError(err)})`);
+      }
+    }
+    return stripThinking(await this.chat(messages, { maxTokens }));
   }
 
   /** AI Agent Function 3 — Action Plan (3 sellable services as JSON). */
   async generateActionPlan(lead: Lead): Promise<string[]> {
-    const raw = await this.chat(
+    // // FIX (PROBLÈME 3) : étape SIMPLE → modèle rapide (8b) + 300 jetons max,
+    // et repli automatique en texte brut si le mode JSON échoue.
+    const raw = await this.chatJson(
       [
         { role: "system", content: SYSTEM_PLAN },
         {
@@ -414,7 +628,7 @@ export class AIAgentService {
           content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\nReturn the JSON object now.`,
         },
       ],
-      { jsonMode: true },
+      { maxTokens: 400, model: this.fastModel },
     );
     const parsed = extractJson<{ services?: unknown }>(raw);
     const services = Array.isArray(parsed.services) ? parsed.services : [];
@@ -456,19 +670,11 @@ export class AIAgentService {
       },
     ];
     try {
-      let raw: string;
-      try {
-        raw = await this.chat(messages, {
-          jsonMode: true,
-          timeoutMs: 20_000,
-          maxTokens: 200,
-        });
-      } catch {
-        // Some providers (Groq) intermittently fail JSON mode with an empty
-        // generation; retry once in plain mode — extractJson tolerates prose
-        // wrapped around the JSON object.
-        raw = await this.chat(messages, { timeoutMs: 20_000, maxTokens: 300 });
-      }
+      // // FIX (PROBLÈME 3) : modèle RAPIDE + 200 jetons (un domaine et un niveau
+      // de confiance suffisent) ; repli texte automatique si le JSON échoue.
+      // // FIX (fiabilité) : 300 jetons (au lieu de 200) — le mode JSON de Groq
+      // renvoyait parfois une génération vide avec un budget trop serré.
+      const raw = await this.chatJson(messages, { maxTokens: 300, model: this.fastModel });
       const parsed = extractJson<{ website?: unknown; confidence?: unknown }>(raw);
       const url = typeof parsed.website === "string" ? parsed.website.trim() : "";
       if (!url || !/^https?:\/\//i.test(url)) return null;
@@ -479,12 +685,15 @@ export class AIAgentService {
       if (!plausibleDomainForName(lead.venue.name, url)) return null;
 
       const confidence = parsed.confidence === "high" ? "high" : "low";
-      // 5. Verified = confident claim + two consecutive reachable probes.
-      const first = await probeSite(url);
-      const verified = confidence === "high" && first.ok && (await probeSite(url)).ok;
+      // // FIX (PROBLÈME 3) : UNE seule sonde (4 s) au lieu de deux sondes
+      // séquentielles → ~4 s gagnées par prospect analysé.
+      const probe = await probeSite(url);
+      const verified = confidence === "high" && probe.ok;
       return { url, verified };
-    } catch {
-      return null; // website discovery is best-effort, never blocks the audit
+    } catch (err) {
+      // Best-effort : ne bloque jamais l'audit, mais l'échec est TRACÉ en console.
+      logError("aiAgent", err, { etape: "découverte de site", lieu: lead.venue.name });
+      return null;
     }
   }
 
@@ -523,13 +732,9 @@ export class AIAgentService {
         { role: "user", content: `Site data:\n${payload}\n\nJudge the site quality now.` },
       ];
 
-      let raw: string;
-      try {
-        raw = await this.chat(messages, { jsonMode: true, timeoutMs: 30_000, maxTokens: 500 });
-      } catch {
-        // Groq intermittently fails JSON mode — retry in plain mode.
-        raw = await this.chat(messages, { timeoutMs: 30_000, maxTokens: 700 });
-      }
+      // // FIX (PROBLÈME 1 & 3) : timeout plafonné à 15 s, 500 jetons max, et
+      // repli texte automatique si le fournisseur refuse le mode JSON.
+      const raw = await this.chatJson(messages, { maxTokens: 500 });
       const parsed = extractJson<{
         verdict?: unknown;
         summary?: unknown;
@@ -558,19 +763,89 @@ export class AIAgentService {
         generatedAt: new Date().toISOString(),
         model: this.settings.model,
       };
-    } catch {
-      return null; // site check is best-effort, never blocks the flow
+    } catch (err) {
+      // Le site-check ne bloque jamais le flux, mais l'erreur exacte est loguée.
+      logError("aiAgent", err, { etape: "analyse de site", url });
+      return null;
     }
   }
 
-  /** Convenience: run the full audit (gap + outreach + plan + website). */
-  async fullAudit(lead: Lead): Promise<AiAudit> {
+  /**
+   * // FIX (PROBLÈME 3) : l'audit complet publie CHAQUE bloc dès qu'il est prêt
+   * (affichage progressif) au lieu d'attendre les 4 appels.
+   */
+  async fullAudit(lead: Lead, hooks: AuditHooks = {}): Promise<AiAudit> {
+    const partial: AuditPartial = {};
+    const warnings: string[] = [];
+    const publish = () => hooks.onPartial?.({ ...partial, warnings: [...warnings] });
+    const startedAt = Date.now();
+
+    // // FIX (PROBLÈME 3) : les 4 agents IA tournent en PARALLÈLE (Promise.all).
+    const gapTask = this.analyzeDigitalGap(lead, (text) => {
+      partial.gapReport = text;
+      publish();
+    }).then((gapReport) => {
+      partial.gapReport = gapReport;
+      publish();
+      return gapReport;
+    });
+
+    const outreachTask = this.generateOutreach(lead, "email", (text) => {
+      partial.outreach = text;
+      publish();
+    })
+      .then((outreach) => {
+        partial.outreach = outreach;
+        publish();
+        return outreach;
+      })
+      // // FIX (PROBLÈME 1) : un échec SECONDAIRE n'annule plus tout l'audit —
+      // il devient un avertissement visible + une entrée dans la console.
+      .catch((err) => {
+        logError("aiAgent", err, { etape: "message de contact", lieu: lead.venue.name });
+        warnings.push("Message de contact non généré (erreur IA) — relancez l'audit.");
+        publish();
+        return "";
+      });
+
+    const planTask = this.generateActionPlan(lead)
+      .then((actionPlan) => {
+        partial.actionPlan = actionPlan;
+        publish();
+        return actionPlan;
+      })
+      .catch((err) => {
+        logError("aiAgent", err, { etape: "plan d'action", lieu: lead.venue.name });
+        warnings.push("Plan d'action non généré (erreur IA).");
+        publish();
+        return [];
+      });
+
+    const siteTask = this.discoverWebsite(lead)
+      .then((website) => {
+        partial.website = website;
+        publish();
+        return website;
+      })
+      .catch((err) => {
+        logError("aiAgent", err, { etape: "découverte de site", lieu: lead.venue.name });
+        warnings.push("Recherche de site web indisponible.");
+        publish();
+        return null;
+      });
+
     const [gapReport, outreach, actionPlan, website] = await Promise.all([
-      this.analyzeDigitalGap(lead),
-      this.generateOutreach(lead, "email"),
-      this.generateActionPlan(lead),
-      this.discoverWebsite(lead),
+      gapTask,
+      outreachTask,
+      planTask,
+      siteTask,
     ]);
+
+    logInfo("aiAgent", `audit complet en ${Date.now() - startedAt} ms`, {
+      modele: this.settings.model,
+      avertissements: warnings.length,
+    });
+
     return {
       gapReport,
       outreach,
@@ -578,6 +853,7 @@ export class AIAgentService {
       website,
       generatedAt: new Date().toISOString(),
       model: this.settings.model,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 }

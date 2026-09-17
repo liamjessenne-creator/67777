@@ -32,9 +32,27 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 3. **AI deep audit** (Groq, any OpenAI-compatible endpoint) — one click generates a sales-oriented **gap report**, a non-spammy **cold-outreach draft** (SMS/WhatsApp/Email), an **action plan** of 3 priced services, and even **discovers the venue's hidden official website** (verified reachable before being shown).
 4. **Workflow** — landing page with an interactive globe, full-screen ranked results page, CSV/JSON export, `localStorage` persistence, built-in legal pages.
 
+## Reliability & performance (hardened)
+
+The app is front-end only, so every network/AI call is wrapped by a single shared layer (`net.ts`):
+
+| Concern | Implementation |
+|---|---|
+| **Explicit timeouts** | 15 s max per call (AbortController); 4 s site probes, 8 s homepage relay |
+| **Automatic retries** | 3 attempts with exponential backoff + jitter (0.6 s → 1.2 s → 2.4 s); 401/404 never retried |
+| **No silent failure** | Every catch logs the exact error to the console; partial AI failures surface as a visible warning in the audit drawer |
+| **Clear French errors** | Timeouts, 429, network loss, unknown model… all translated into actionable French messages, with a one-click **Réessayer** button |
+| **Global safety net** | React `ErrorBoundary` — a render crash shows a French recovery screen instead of a blank page |
+| **Bounded scan budget** | Overpass: one attempt per mirror (3 total) under a **28 s total budget** — the old worst case was ~90 s |
+| **Progressive UI** | Step messages (*"Recherche des commerces…"*, *"Analyse de leur présence internet… x/y"*) + live chronometer; rows appear as they are scored |
+| **Streaming** | The gap report and outreach message stream token-by-token into the drawer (SSE) |
+| **Parallelism** | 4 AI blocks in parallel; site checks 4 at a time; Google Places 6 at a time (bounded concurrency) |
+| **Offline fallback** | Last successful scan is restored from localStorage with a *"Résultats en cache"* banner if the network fails |
+| **Smaller payloads** | Overpass result cap 3000 → 800, raw OSM tags stripped before being stored (~3× lighter localStorage) |
+
 ## Landing page & legal
 
-The app opens on a **landing page** featuring an interactive wireframe globe (pure HTML canvas — rotating dot-matrix Earth with pulsing "internet" arcs; drag to rotate, scroll to zoom, **click it to enter the tool**).
+The app opens on a **landing page** with a full-screen **Chrome Cells** WebGL background (liquid-metal cells shader, used as provided) that the rest of the UI is styled around: frosted-glass panels, chrome text gradients, dark scrims for contrast. The hero also features an interactive wireframe globe (pure HTML canvas — rotating dot-matrix Earth with pulsing "internet" arcs; drag to rotate, scroll to zoom, **click it to enter the tool**).
 
 Built-in legal pages (linked in the footer and inside the tool):
 
@@ -51,7 +69,7 @@ npm install
 npm run dev        # → http://localhost:5199
 ```
 
-By default the app ships **without a key**: create a `.env.local` file (gitignored) with your Groq key:
+By default the app ships **without a key** (never hard-coded): create a `.env.local` file (gitignored) with your Groq key — Vite requires the `VITE_` prefix to expose a variable to the browser:
 
 ```dotenv
 VITE_GROQ_API_KEY=gsk_…your key…
@@ -80,7 +98,7 @@ node overpass-test.mjs "Paris"   # validate Overpass queries for a city
 |---|---|
 | **LLM API Key** | Groq key (`gsk_…`) — stored in your browser's localStorage only |
 | **Base URL** | Default `https://api.groq.com/openai/v1`; works with DeepSeek, Qwen, OpenRouter, local LLMs — any OpenAI-compatible endpoint |
-| **Model ID** | Presets verified live against Groq (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`, `groq/compound-mini`) — or type any custom model ID |
+| **Model ID** | Presets verified live against the Groq catalogue (`openai/gpt-oss-120b` main, `openai/gpt-oss-20b` fast for short JSON steps, `qwen/qwen3.8-27b`, `groq/compound-mini`) — or type any custom model ID. If an ID is retired, the agent automatically falls back to your main model. |
 | **Google Places key** *(optional)* | Enables real Google ratings/review counts during scans |
 
 **Save & Test Connection** validates the key with a dummy prompt.

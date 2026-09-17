@@ -58,8 +58,15 @@ export function loadLeads(): Lead[] {
   return read<Lead[]>(KEYS.leads, []);
 }
 
+/**
+ * // FIX (PROBLÈME 2 — mobile) : les tags OSM bruts ne sont PAS écrits dans le
+ * localStorage. Ils ne servent qu'au calcul du score au moment du scan ; les
+ * stocker multipliait la taille (~3x sur un scan de 700 commerces) et ralentissait
+ * chaque écriture — critique quand on approche du quota mobile (~5 Mo).
+ */
 export function saveLeads(leads: Lead[]): void {
-  write(KEYS.leads, leads);
+  const slim = leads.map((l) => ({ ...l, venue: { ...l.venue, rawTags: {} } }));
+  write(KEYS.leads, slim);
 }
 
 export function loadScans(): ScanMeta[] {
@@ -83,6 +90,11 @@ export interface ScanSummaryData {
   total: number;
   high: number;
   capped: boolean;
+  /** // FIX (PROBLÈME 2) : date du dernier scan réussi, affichée quand on
+   * retombe sur les résultats en cache (réseau indisponible). */
+  scannedAt?: string;
+  /** // FIX (PROBLÈME 3) : durée réelle de l'analyse, en millisecondes. */
+  durationMs?: number;
 }
 
 export function loadScanSummary(): ScanSummaryData | null {

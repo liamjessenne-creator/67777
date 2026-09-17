@@ -20,6 +20,11 @@ export interface GeoPlace {
   isLocality: boolean;
 }
 
+// FIX (PROBLÈME 1 & 2) : timeouts + retry + erreurs en français via net.ts.
+// Avant : un fetch sans timeout pouvait pendre indéfiniment sur réseau mobile
+// lent → l'autocomplétion « ne faisait rien », sans aucune erreur visible.
+import { NetworkError, describeError, fetchWithRetry, logError } from "./net";
+
 interface NominatimSearchItem {
   osm_type?: string;
   osm_id?: number;
@@ -55,9 +60,16 @@ async function searchNominatim(query: string, signal?: AbortSignal): Promise<Geo
   url.searchParams.set("addressdetails", "1");
   url.searchParams.set("limit", "8");
 
-  const res = await fetch(url.toString(), { signal });
+  // FIX (PROBLÈME 1) : timeout 10 s (autocomplétion = doit rester réactive) + 2 essais.
+  const res = await fetchWithRetry(url.toString(), {
+    timeoutMs: 10_000,
+    attempts: 2,
+    baseDelayMs: 500,
+    label: "Nominatim",
+    signal,
+  });
   if (!res.ok) {
-    throw new Error(`Nominatim search failed (${res.status})`);
+    throw new NetworkError(`Recherche de ville indisponible (Nominatim : HTTP ${res.status}).`, res.status);
   }
   const data = (await res.json()) as NominatimSearchItem[];
 
@@ -102,9 +114,16 @@ async function searchPhoton(query: string, signal?: AbortSignal): Promise<GeoPla
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "6");
 
-  const res = await fetch(url.toString(), { signal });
+  // FIX (PROBLÈME 1) : même protection que Nominatim (timeout + retry).
+  const res = await fetchWithRetry(url.toString(), {
+    timeoutMs: 10_000,
+    attempts: 2,
+    baseDelayMs: 500,
+    label: "Photon",
+    signal,
+  });
   if (!res.ok) {
-    throw new Error(`Photon search failed (${res.status})`);
+    throw new NetworkError(`Recherche de ville indisponible (Photon : HTTP ${res.status}).`, res.status);
   }
   const json = (await res.json()) as { features?: PhotonFeature[] };
   const features = json.features ?? [];
@@ -149,16 +168,21 @@ export async function searchCity(query: string, signal?: AbortSignal): Promise<G
     const results = await searchNominatim(query, signal);
     if (results.length > 0) return results;
   } catch (err) {
+    if (signal?.aborted) throw err; // annulation volontaire → on ne bascule pas de fournisseur
     nominatimError = err;
+    logError("nominatim", err, { provider: "Nominatim", query });
   }
 
   try {
     const results = await searchPhoton(query, signal);
     if (results.length > 0) return results;
   } catch (err) {
+    logError("nominatim", err, { provider: "Photon", query });
     if (nominatimError) {
-      throw new Error(
-        "Geocoding unavailable (Nominatim & Photon both failed). Check your connection and retry.",
+      // FIX (PROBLÈME 1) : message clair en français, avec la cause exacte en console.
+      throw new NetworkError(
+        `Recherche de ville impossible : les deux services de géocodage sont injoignables ` +
+          `(${describeError(nominatimError)}). Vérifiez votre connexion puis réessayez.`,
       );
     }
     throw err;

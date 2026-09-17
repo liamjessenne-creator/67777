@@ -4,6 +4,9 @@
  * Stored in localStorage alongside AI settings.
  */
 
+// FIX (PROBLÈME 1 & 2) : timeout 8 s + 2 tentatives, erreurs explicites en français.
+import { NetworkError, fetchWithRetry } from "./net";
+
 export interface PlacesSettings {
   apiKey: string;
   enabled: boolean;
@@ -45,7 +48,9 @@ export async function lookupPlace(
 ): Promise<PlacesLookup | null> {
   if (!settings.apiKey) return null;
 
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+  // FIX (PROBLÈME 1 & 3) : 8 s maximum + 2 tentatives (backoff exponentiel).
+  // Ces appels partent en parallèle par lots — voir mapLimit dans net.ts.
+  const res = await fetchWithRetry("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -54,10 +59,18 @@ export async function lookupPlace(
         "places.displayName,places.rating,places.userRatingCount,places.websiteUri,places.businessStatus,places.formattedAddress",
     },
     body: JSON.stringify({ textQuery: `${name} ${address}`, maxResultCount: 1 }),
+    timeoutMs: 8_000,
+    attempts: 2,
+    baseDelayMs: 500,
+    label: "Google Places",
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Google Places error ${res.status}: ${await res.text()}`);
+    const detail = await res.text().catch(() => "");
+    throw new NetworkError(
+      `Fiche Google indisponible (HTTP ${res.status}). ${detail.slice(0, 120)}`,
+      res.status,
+    );
   }
   const json = (await res.json()) as PlacesTextSearchResponse;
   const place = json.places?.[0];

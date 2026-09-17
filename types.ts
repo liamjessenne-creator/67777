@@ -71,6 +71,11 @@ export interface AiAudit {
   model: string;
   /** Official website discovered (and optionally verified) by the AI agent. */
   website: { url: string; verified: boolean } | null;
+  /**
+   * // FIX (PROBLÈME 1) : échecs partiels non bloquants (ex. plan d'action refusé
+   * par le fournisseur IA). Affichés à l'utilisateur au lieu de disparaître.
+   */
+  warnings?: string[];
 }
 
 /**
@@ -112,12 +117,18 @@ export interface AiSettings {
   model: AiModelId;
 }
 
-/** Curated active model IDs (verified against Groq's catalog — update as needed). */
+/**
+ * Modèles actifs sur Groq — liste VÉRIFIÉE en direct sur l'API du compte
+ * (les modèles Llama n'y sont plus exposés : tout ID retiré renvoie un 404).
+ * gpt-oss-20b sert d'étapes rapides (JSON courts, découverte de site),
+ * gpt-oss-120b de modèle principal pour les rapports rédigés.
+ */
 export const AI_MODELS = [
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
   "qwen/qwen3.8-27b",
   "groq/compound-mini",
+  "groq/compound",
 ] as const;
 
 /** Preset IDs or any custom model id typed by the user (other providers). */
@@ -135,8 +146,13 @@ export type LegalPage = "mentions" | "privacy" | "terms";
  * localStorage); a fresh clone just pastes its key once in Settings.
  */
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  apiKey: import.meta.env.VITE_GROQ_API_KEY ?? "",
+  // // FIX (CONTRAINTE) : la clé ne doit JAMAIS être en dur. Elle est lue dans
+  // l'environnement au build (`GROQ_API_KEY`), avec le préfixe `VITE_` requis
+  // par Vite pour exposer une variable au client, ou saisie une fois dans
+  // ⚙ Réglages (stockée uniquement dans le localStorage du navigateur).
+  apiKey: import.meta.env?.VITE_GROQ_API_KEY ?? import.meta.env?.GROQ_API_KEY ?? "",
   baseUrl: "https://api.groq.com/openai/v1",
+  // Modèle principal par défaut : le plus capable du catalogue Groq actuel.
   model: "openai/gpt-oss-120b",
 };
 

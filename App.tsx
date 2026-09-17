@@ -7,6 +7,7 @@
 
 import {
   Crosshair,
+  Database,
   Download,
   Gauge,
   Loader2,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuditDrawer } from "./AuditDrawer";
+// FIX : fond animé ChromeCells (composant fourni) derrière toute l'interface.
+import ChromeCells from "./ChromeCells";
 import { CitySearch } from "./CitySearch";
 import { FiltersPanel } from "./FiltersPanel";
 import { Landing } from "./Landing";
@@ -31,6 +34,8 @@ import { computeEnrichment } from "./enrichment";
 import { exportLeads } from "./export";
 import { lookupPlace } from "./places";
 import { navigateTo, useRouter } from "./router";
+// FIX (PROBLÈMES 1, 2 & 3) : logs, messages d'erreur FR et parallélisme borné.
+import { describeError, logError, logInfo, mapLimit } from "./net";
 import {
   loadAiSettings,
   loadLeads,
@@ -45,6 +50,7 @@ import {
 } from "./storage";
 import { computeStats } from "./stats";
 import type {
+  AiAudit,
   AiSettings,
   DigitalFilters,
   Lead,
@@ -114,6 +120,27 @@ export default function App() {
   const stopSiteScanRef = useRef(false);
   /** Lead currently undergoing a single-row site check. */
   const [siteCheckingId, setSiteCheckingId] = useState<string | null>(null);
+  /**
+   * // FIX (PROBLÈME 2 — mobile) : étape courante + chrono affichés en direct
+   * (« Recherche des commerces… 3,2 s ») — l'interface reste réactive et
+   * l'utilisateur voit toujours où en est le traitement.
+   */
+  const [scanStep, setScanStep] = useState<string | null>(null);
+  const [scanElapsedMs, setScanElapsedMs] = useState(0);
+  /** // FIX (PROBLÈME 2) : vrai quand on affiche le dernier scan réussi (cache). */
+  const [usingCache, setUsingCache] = useState(false);
+  /** Copie de secours des résultats précédents (repli si le réseau lâche). */
+  const leadsRef = useRef<Lead[]>(leads);
+  leadsRef.current = leads;
+
+  // // FIX (PROBLÈME 2 & 3) : chronomètre visible pendant l'analyse.
+  useEffect(() => {
+    if (!scanning) return;
+    const startedAt = Date.now();
+    setScanElapsedMs(0);
+    const id = setInterval(() => setScanElapsedMs(Date.now() - startedAt), 250);
+    return () => clearInterval(id);
+  }, [scanning]);
 
   useEffect(() => saveScanSummary(scanSummary), [scanSummary]);
   useEffect(() => saveAiSettings(aiSettings), [aiSettings]);
@@ -160,81 +187,107 @@ export default function App() {
   // ---- scan flow ----
   const analyzeArea = useCallback(async () => {
     if (!selectedPlace) return;
+    // // FIX (PROBLÈME 2) : on mémorise le dernier scan réussi AVANT de toucher
+    // aux résultats → repli « résultats en cache » si le réseau lâche.
+    const previousLeads = leadsRef.current;
+    const startedAt = Date.now();
     setScanning(true);
     setScanError(null);
-    setStatusMsg("Querying OpenStreetMap overpass…");
+    setUsingCache(false);
+    setScanStep("Recherche des commerces sur OpenStreetMap…");
     try {
-      const { venues: allVenues } = await queryVenues(selectedPlace);
+      const { venues: allVenues, endpointUsed, durationMs } = await queryVenues(selectedPlace, {
+        // // FIX (PROBLÈME 2) : l'utilisateur voit QUEL miroir est interrogé et
+        // combien de temps cela prend — plus jamais d'attente muette.
+        onProgress: ({ host, attempt, total }) =>
+          setScanStep(
+            `Recherche des commerces sur OpenStreetMap… (miroir ${attempt}/${total} : ${host})`,
+          ),
+      });
+      logInfo("scan", `${allVenues.length} commerces via ${endpointUsed} en ${durationMs} ms`, {
+        ville: selectedPlace.displayName,
+      });
 
       // Don't dump the whole metropolitan area: cap the scan so results stay
       // targeted. Refining the query (e.g. "Lyon 4e") narrows the area.
       const SCAN_CAP = 700;
       const venues = allVenues.slice(0, SCAN_CAP);
       const capped = allVenues.length > SCAN_CAP;
-
-      setStatusMsg(
-        placesSettings.enabled && placesSettings.apiKey
-          ? `Enriching ${venues.length} venues via Google Places…`
-          : `Scoring ${venues.length} venues…`,
-      );
+      if (venues.length === 0) {
+        throw new Error(
+          `Aucun commerce trouvé à « ${selectedPlace.shortName} ». Essayez une zone plus large ou un autre quartier.`,
+        );
+      }
 
       const usePlaces = placesSettings.enabled && Boolean(placesSettings.apiKey);
+      setScanStep("Analyse de leur présence internet…");
+
+      // // FIX (PROBLÈME 2 & 3) : affichage PROGRESSIF — les commerces sont
+      // ajoutés au fur et à mesure (l'utilisateur n'attend plus la fin pour voir
+      // quelque chose), et la concurrence est BORNÉE (6 appels Google max en vol,
+      // 16 sans Google) pour ne pas saturer un réseau mobile.
       const enriched: Lead[] = [];
-      const batchSize = 8;
-      for (let i = 0; i < venues.length; i += batchSize) {
-        const batch = venues.slice(i, i + batchSize);
-        const batchLeads = await Promise.all(
-          batch.map(async (venue): Promise<Lead> => {
-            const enrichment = computeEnrichment(venue);
-            if (usePlaces) {
-              try {
-                const lookup = await lookupPlace(
-                  { apiKey: placesSettings.apiKey, enabled: true },
-                  venue.name,
-                  venue.address,
-                );
-                if (lookup) {
-                  if (lookup.rating != null) enrichment.checks.rating = lookup.rating;
-                  if (lookup.reviewCount != null) {
-                    enrichment.checks.reviewCount = lookup.reviewCount;
-                    enrichment.checks.reviewsKnown = true;
-                    if (lookup.reviewCount > 50) {
-                      enrichment.digitalScore = Math.min(100, enrichment.digitalScore + 30);
-                    }
-                  }
-                  if (lookup.website && !enrichment.checks.hasWebsite) {
-                    venue.website = lookup.website;
-                  }
-                  if (lookup.businessStatus) {
-                    enrichment.signals.push(`Google status: ${lookup.businessStatus}`);
-                  }
-                  enrichment.checks.source = "google-places";
-                  const score = enrichment.digitalScore;
-                  enrichment.priority = score < 40 ? "high" : score < 70 ? "medium" : "low";
+      let completed = 0;
+      let placesFailures = 0;
+
+      await mapLimit(venues, usePlaces ? 6 : 16, async (venue) => {
+        const enrichment = computeEnrichment(venue);
+        if (usePlaces) {
+          try {
+            const lookup = await lookupPlace(
+              { apiKey: placesSettings.apiKey, enabled: true },
+              venue.name,
+              venue.address,
+            );
+            if (lookup) {
+              if (lookup.rating != null) enrichment.checks.rating = lookup.rating;
+              if (lookup.reviewCount != null) {
+                enrichment.checks.reviewCount = lookup.reviewCount;
+                enrichment.checks.reviewsKnown = true;
+                if (lookup.reviewCount > 50) {
+                  enrichment.digitalScore = Math.min(100, enrichment.digitalScore + 30);
                 }
-              } catch {
-                enrichment.signals.push("Google Places lookup failed — heuristic score kept");
               }
+              if (lookup.website && !enrichment.checks.hasWebsite) {
+                venue.website = lookup.website;
+              }
+              if (lookup.businessStatus) {
+                enrichment.signals.push(`Statut Google : ${lookup.businessStatus}`);
+              }
+              enrichment.checks.source = "google-places";
+              const score = enrichment.digitalScore;
+              enrichment.priority = score < 40 ? "high" : score < 70 ? "medium" : "low";
             }
-            return {
-              id: venue.id,
-              venue,
-              enrichment,
-              status: "new" as const,
-              addedAt: new Date().toISOString(),
-            };
-          }),
-        );
-        enriched.push(...batchLeads);
-        if (i + batchSize < venues.length) {
-          setStatusMsg(`Enriching venues… ${Math.min(i + batchSize, venues.length)}/${venues.length}`);
+          } catch (err) {
+            // // FIX (PROBLÈME 1) : plus d'échec silencieux — compteur + log exact.
+            placesFailures += 1;
+            logError("scan", err, { etape: "Google Places", commerce: venue.name });
+            enrichment.signals.push("Fiche Google indisponible — score heuristique conservé");
+          }
         }
-      }
+        enriched.push({
+          id: venue.id,
+          venue,
+          enrichment,
+          status: "new" as const,
+          addedAt: new Date().toISOString(),
+        });
+        completed += 1;
+        if (completed % 10 === 0 || completed === venues.length) {
+          // Affichage progressif : la table se remplit pendant l'analyse.
+          setLeads([...enriched]);
+          setScanStep(`Analyse de leur présence internet… ${completed}/${venues.length}`);
+        }
+      });
 
       // A scan is a fresh targeted search on the chosen area: replace the pool.
       setLeads(enriched);
       setSelectedId(null);
       setDrawerLeadId(null);
+
+      if (placesFailures > 0) {
+        logInfo("scan", `${placesFailures} fiches Google indisponibles sur ${venues.length}`);
+      }
 
       const meta: ScanMeta = {
         city: selectedPlace.shortName,
@@ -248,17 +301,35 @@ export default function App() {
       setScans((prev) => [meta, ...prev.filter((s) => s.displayName !== meta.displayName)].slice(0, 20));
 
       const high = enriched.filter((l) => l.enrichment.priority === "high").length;
+      const totalMs = Date.now() - startedAt;
+      // // FIX (PROBLÈME 2) : le résumé (avec date + durée) sert aussi de cache.
       setScanSummary({
         city: selectedPlace.shortName,
         total: venues.length,
         high,
         capped,
+        scannedAt: new Date().toISOString(),
+        durationMs: totalMs,
       });
-      setStatusMsg(null);
+      logInfo("scan", `analyse terminée en ${totalMs} ms`, {
+        commerces: venues.length,
+        cibles: high,
+      });
+      setScanStep(null);
       setShowFilters(false);
     } catch (err) {
-      setScanError(err instanceof Error ? err.message : String(err));
-      setStatusMsg(null);
+      // // FIX (PROBLÈME 1) : message clair en français + erreur exacte en console.
+      const message = describeError(err);
+      logError("scan", err, { ville: selectedPlace.displayName });
+      setScanError(message);
+      setScanStep(null);
+      // // FIX (PROBLÈME 2) : repli automatique sur le cache local (dernier scan
+      // réussi) au lieu de laisser un écran vide sans explication.
+      if (previousLeads.length > 0) {
+        setLeads(previousLeads);
+        setUsingCache(true);
+        logInfo("scan", `repli sur le cache : ${previousLeads.length} résultats précédents`);
+      }
     } finally {
       setScanning(false);
     }
@@ -275,9 +346,43 @@ export default function App() {
       setSelectedId(lead.id);
       setAuditingId(lead.id);
       setAuditError(null);
+      const startedAt = Date.now();
+      // // FIX (PROBLÈME 3) : squelette d'audit publié immédiatement, puis rempli
+      // bloc par bloc (le tiroir affiche le rapport pendant sa génération).
+      const placeholder: AiAudit = {
+        gapReport: "",
+        outreach: "",
+        actionPlan: [],
+        website: null,
+        generatedAt: new Date().toISOString(),
+        model: aiSettings.model,
+      };
       try {
         const agent = new AIAgentService(aiSettings);
-        const audit = await agent.fullAudit(lead);
+        const audit = await agent.fullAudit(lead, {
+          onPartial: (partial) => {
+            setLeads((prev) =>
+              prev.map((l) => {
+                if (l.id !== lead.id) return l;
+                const base = l.audit ?? placeholder;
+                return {
+                  ...l,
+                  audit: {
+                    ...base,
+                    gapReport: partial.gapReport ?? base.gapReport,
+                    outreach: partial.outreach ?? base.outreach,
+                    actionPlan: partial.actionPlan ?? base.actionPlan,
+                    website: partial.website !== undefined ? partial.website : base.website,
+                    warnings: partial.warnings ?? base.warnings,
+                    generatedAt: new Date().toISOString(),
+                    model: aiSettings.model,
+                  },
+                };
+              }),
+            );
+          },
+        });
+        logInfo("audit", `${lead.venue.name} analysé en ${Date.now() - startedAt} ms`);
         setLeads((prev) =>
           prev.map((l) => {
             if (l.id !== lead.id) return l;
@@ -292,12 +397,12 @@ export default function App() {
           }),
         );
       } catch (err) {
+        // // FIX (PROBLÈME 1) : erreur IA toujours affichée en français + loggée.
+        logError("audit", err, { commerce: lead.venue.name });
         setAuditError(
           err instanceof AiAgentError
             ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Unknown audit error",
+            : `L'audit IA a échoué : ${describeError(err)}. Relancez l'analyse.`,
         );
       } finally {
         setAuditingId(null);
@@ -320,7 +425,9 @@ export default function App() {
           ),
         );
       } catch (err) {
-        setAuditError(err instanceof Error ? err.message : "Outreach generation failed");
+        // // FIX (PROBLÈME 1) : message clair en français + erreur exacte en console.
+        logError("audit", err, { etape: "message de contact", commerce: lead.venue.name });
+        setAuditError(`Génération du message impossible : ${describeError(err)}`);
       } finally {
         setAuditingId(null);
       }
@@ -352,31 +459,41 @@ export default function App() {
     if (!aiSettings.apiKey || siteScan.active) return;
     const targets = leads.filter((l) => l.enrichment.checks.hasWebsite && l.venue.website);
     if (targets.length === 0) {
-      setStatusMsg("No business with an existing website in the current results.");
+      setStatusMsg("Aucun commerce avec un site web dans les résultats actuels.");
       return;
     }
     stopSiteScanRef.current = false;
     setSiteScan({ active: true, done: 0, total: targets.length, last: null });
-    setStatusMsg(`Site check running on ${targets.length} websites…`);
+    // // FIX (PROBLÈME 3) : 4 sites vérifiés EN PARALLÈLE (avant : un par un →
+    // plusieurs minutes pour 30 sites). Chaque résultat est persisté dès qu'il tombe.
+    setStatusMsg(`Vérification de ${targets.length} sites (4 en parallèle)…`);
+    const startedAt = Date.now();
 
     const agent = new AIAgentService(aiSettings);
     let done = 0;
-    for (const lead of targets) {
-      if (stopSiteScanRef.current) break;
-      const audit = await agent.auditWebsiteQuality(lead);
-      done += 1;
-      if (audit) {
-        setLeads((prev) =>
-          prev.map((l) => (l.id === lead.id ? { ...l, siteAudit: audit } : l)),
-        );
+    await mapLimit(targets, 4, async (lead) => {
+      if (stopSiteScanRef.current) return;
+      try {
+        const audit = await agent.auditWebsiteQuality(lead);
+        if (audit) {
+          setLeads((prev) =>
+            prev.map((l) => (l.id === lead.id ? { ...l, siteAudit: audit } : l)),
+          );
+        }
+      } catch (err) {
+        // // FIX (PROBLÈME 1) : un site en échec n'interrompt plus le lot — log + continue.
+        logError("siteCheck", err, { commerce: lead.venue.name, site: lead.venue.website });
+      } finally {
+        done += 1;
+        setSiteScan({
+          active: done < targets.length && !stopSiteScanRef.current,
+          done,
+          total: targets.length,
+          last: lead.venue.name,
+        });
       }
-      setSiteScan({
-        active: done < targets.length && !stopSiteScanRef.current,
-        done,
-        total: targets.length,
-        last: lead.venue.name,
-      });
-    }
+    });
+    logInfo("siteCheck", `${done}/${targets.length} sites vérifiés en ${Date.now() - startedAt} ms`);
     setStatusMsg(null);
   }, [aiSettings, leads, siteScan.active]);
 
@@ -399,8 +516,18 @@ export default function App() {
           );
           setDrawerLeadId(lead.id);
         } else {
-          setAuditError("Site check failed — the website could not be reached.");
+          // // FIX (PROBLÈME 1) : cause précise loguée + message clair en français.
+          logError("siteCheck", new Error("Analyse de site sans résultat"), {
+            commerce: lead.venue.name,
+            site: lead.venue.website,
+          });
+          setAuditError(
+            `Impossible d'analyser le site de « ${lead.venue.name} » : le site n'a pas répondu (ou l'IA est indisponible). Réessayez dans un instant.`,
+          );
         }
+      } catch (err) {
+        logError("siteCheck", err, { commerce: lead.venue.name });
+        setAuditError(`Analyse de site impossible : ${describeError(err)}`);
       } finally {
         setSiteCheckingId(null);
       }
@@ -410,7 +537,10 @@ export default function App() {
 
   const handleSelectPlace = useCallback((place: GeoPlace) => {
     setSelectedPlace(place);
-    setStatusMsg(`${place.shortName} selected — ready to analyze.`);
+    setScanError(null);
+    setUsingCache(false);
+    // // FIX (PROBLÈME 2) : message d'étape en français, cohérent partout.
+    setStatusMsg(`${place.shortName} sélectionné — prêt à analyser.`);
   }, []);
 
   // ---- routing render ----
@@ -432,7 +562,18 @@ export default function App() {
 
   // ---- tool ----
   return (
-    <div className="bg-grid flex h-full w-full flex-col overflow-hidden">
+    <>
+      {/*
+       * FIX (UI) : le composant ChromeCells fourni sert de FOND à toute
+       * l'application (canvas WebGL plein écran), avec un voile sombre pour
+       * garantir la lisibilité des données par-dessus.
+       */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <ChromeCells style={{ minWidth: 0, minHeight: 0 }} />
+        <div className="absolute inset-0 bg-slate-950/65" />
+      </div>
+
+      <div className="bg-grid relative z-10 flex h-full w-full flex-col overflow-hidden">
       <TopBar
         stats={stats}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -454,10 +595,10 @@ export default function App() {
             variant="primary"
             onClick={analyzeArea}
             disabled={scanning || !selectedPlace}
-            title={selectedPlace ? `Analyze ${selectedPlace.shortName}` : "Pick a city first"}
+            title={selectedPlace ? `Analyser ${selectedPlace.shortName}` : "Choisissez d'abord une ville"}
           >
             {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
-            {scanning ? "Analyzing…" : "Analyze Area"}
+            {scanning ? "Analyse…" : "Analyser la zone"}
           </Button>
           <button
             onClick={() => setShowFilters((v) => !v)}
@@ -474,22 +615,54 @@ export default function App() {
         </div>
       </div>
 
-      {statusMsg || scanError ? (
+      {/*
+       * FIX (PROBLÈME 2 — mobile) : barre d'état NON BLOQUANTE avec spinner,
+       * message d'étape en français et chronomètre en direct ; en cas d'échec, un
+       * bouton « Réessayer » immédiat (plus jamais d'écran vide sans explication).
+       */}
+      {scanning || scanError || statusMsg ? (
         <div
           className={`flex items-center gap-2 border-b px-4 py-1.5 font-mono text-[11px] ${
             scanError
               ? "border-red-500/30 bg-red-500/10 text-red-300"
-              : "border-surface-border bg-surface-raised text-slate-400"
+              : "border-surface-border bg-surface-raised/80 text-slate-400 backdrop-blur"
           }`}
         >
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              scanError
-                ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
-                : "animate-pulse bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
-            }`}
-          />
-          {scanError ?? statusMsg}
+          {scanning ? (
+            <Loader2 size={12} className="shrink-0 animate-spin text-accent" />
+          ) : (
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                scanError
+                  ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
+                  : "animate-pulse bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+              }`}
+            />
+          )}
+          <span className="truncate">{scanError ?? scanStep ?? statusMsg}</span>
+          {scanning ? (
+            <span className="ml-auto shrink-0 tabular-nums text-slate-500">
+              {(scanElapsedMs / 1000).toFixed(1)} s
+            </span>
+          ) : null}
+          {scanError ? (
+            <Button size="sm" onClick={analyzeArea} className="ml-auto shrink-0">
+              <RotateCcw size={11} /> Réessayer
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* FIX (PROBLÈME 2) : bandeau « résultats en cache » quand le réseau a lâché. */}
+      {usingCache ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 font-mono text-[11px] text-amber-300">
+          <Database size={12} className="shrink-0" />
+          <span>
+            Résultats en cache — dernier scan réussi{" "}
+            {scanSummary?.scannedAt ? new Date(scanSummary.scannedAt).toLocaleString() : "précédemment"}
+            {scanSummary ? ` · ${scanSummary.city}` : ""} ({leads.length} commerces). Relancez
+            l'analyse dès que le réseau revient.
+          </span>
         </div>
       ) : null}
 
@@ -664,6 +837,7 @@ export default function App() {
         onSaveAi={setAiSettings}
         onSavePlaces={setPlacesSettings}
       />
-    </div>
+      </div>
+    </>
   );
 }
