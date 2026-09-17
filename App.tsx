@@ -34,6 +34,8 @@ import { computeEnrichment } from "./enrichment";
 import { exportLeads } from "./export";
 import { lookupPlace } from "./places";
 import { navigateTo, useRouter } from "./router";
+// FIX (PROBLÈME 1) : la passerelle Edge remplace la clé côté navigateur.
+import { DIRECT_AI_KEY_ALLOWED, isProxyConfigured } from "./aiProxy";
 // FIX (PROBLÈMES 1, 2 & 3) : logs, messages d'erreur FR et parallélisme borné.
 import { describeError, logError, logInfo, mapLimit } from "./net";
 import {
@@ -150,6 +152,17 @@ export default function App() {
 
   // ---- derived ----
   const stats = useMemo(() => computeStats(leads), [leads]);
+
+  /**
+   * FIX (PROBLÈME 1) : l'analyse est disponible dès qu'une passerelle Edge est
+   * configurée (chemin recommandé). La clé locale ne sert qu'au développement.
+   */
+  const aiConfigured = useMemo(
+    () =>
+      isProxyConfigured(aiSettings.proxyUrl) ||
+      (DIRECT_AI_KEY_ALLOWED && Boolean(aiSettings.apiKey)),
+    [aiSettings.proxyUrl, aiSettings.apiKey],
+  );
 
   const filteredLeads = useMemo(() => {
     return leads.filter((l) => {
@@ -338,7 +351,7 @@ export default function App() {
   // ---- AI audit flow ----
   const runAudit = useCallback(
     async (lead: Lead) => {
-      if (!aiSettings.apiKey) {
+      if (!aiConfigured) {
         setSettingsOpen(true);
         return;
       }
@@ -413,7 +426,7 @@ export default function App() {
 
   const regenerateOutreach = useCallback(
     async (lead: Lead, channel: "sms" | "whatsapp" | "email") => {
-      if (!aiSettings.apiKey || auditingId) return;
+      if (!aiConfigured || auditingId) return;
       setAuditingId(lead.id);
       setAuditError(null);
       try {
@@ -432,7 +445,7 @@ export default function App() {
         setAuditingId(null);
       }
     },
-    [aiSettings, auditingId],
+    [aiSettings, aiConfigured, auditingId],
   );
 
   const markContacted = useCallback((lead: Lead) => {
@@ -456,7 +469,7 @@ export default function App() {
    * stoppable, and each result is persisted as it lands.
    */
   const runSiteChecks = useCallback(async () => {
-    if (!aiSettings.apiKey || siteScan.active) return;
+    if (!aiConfigured || siteScan.active) return;
     const targets = leads.filter((l) => l.enrichment.checks.hasWebsite && l.venue.website);
     if (targets.length === 0) {
       setStatusMsg("Aucun commerce avec un site web dans les résultats actuels.");
@@ -495,7 +508,7 @@ export default function App() {
     });
     logInfo("siteCheck", `${done}/${targets.length} sites vérifiés en ${Date.now() - startedAt} ms`);
     setStatusMsg(null);
-  }, [aiSettings, leads, siteScan.active]);
+  }, [aiSettings, aiConfigured, leads, siteScan.active]);
 
   const stopSiteChecks = useCallback(() => {
     stopSiteScanRef.current = true;
@@ -505,7 +518,7 @@ export default function App() {
   /** Site check on a single row (per-row "SITE" button). */
   const runSiteCheckOne = useCallback(
     async (lead: Lead) => {
-      if (!aiSettings.apiKey || siteCheckingId) return;
+      if (!aiConfigured || siteCheckingId) return;
       setSiteCheckingId(lead.id);
       try {
         const agent = new AIAgentService(aiSettings);
@@ -532,7 +545,7 @@ export default function App() {
         setSiteCheckingId(null);
       }
     },
-    [aiSettings, siteCheckingId],
+    [aiSettings, aiConfigured, siteCheckingId],
   );
 
   const handleSelectPlace = useCallback((place: GeoPlace) => {
@@ -577,7 +590,7 @@ export default function App() {
       <TopBar
         stats={stats}
         onOpenSettings={() => setSettingsOpen(true)}
-        settingsOk={Boolean(aiSettings.apiKey)}
+        settingsOk={aiConfigured}
         onHome={() => setEntered(false)}
       />
 
@@ -701,7 +714,7 @@ export default function App() {
                     variant="primary"
                     onClick={runSiteChecks}
                     disabled={
-                      !aiSettings.apiKey ||
+                      !aiConfigured ||
                       !leads.some((l) => l.enrichment.checks.hasWebsite && l.venue.website)
                     }
                     title="Contrôler la qualité des sites existants : vitesse, HTTPS, contenu"

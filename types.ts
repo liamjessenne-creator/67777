@@ -115,15 +115,23 @@ export interface AiSettings {
   apiKey: string;
   baseUrl: string;
   model: AiModelId;
+  /**
+   * FIX (PROBLÈME 1) : URL de la fonction Edge Supabase qui relaie les appels
+   * Groq. Quand elle est renseignée, la clé côté navigateur n'est plus utilisée :
+   * elle reste dans les secrets Supabase.
+   */
+  proxyUrl?: string;
 }
 
 /**
- * Modèles actifs sur Groq — liste VÉRIFIÉE en direct sur l'API du compte
- * (les modèles Llama n'y sont plus exposés : tout ID retiré renvoie un 404).
- * gpt-oss-20b sert d'étapes rapides (JSON courts, découverte de site),
- * gpt-oss-120b de modèle principal pour les rapports rédigés.
+ * Modèles proposés (Groq en priorité).
+ * `llama-3.3-70b-versatile` est le modèle PRINCIPAL demandé : la fonction Edge
+ * bascule automatiquement sur un repli si un identifiant n'est plus exposé par
+ * le catalogue du compte (un 404 ne doit jamais casser une analyse en cours).
  */
 export const AI_MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
   "qwen/qwen3.8-27b",
@@ -152,8 +160,11 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   // ⚙ Réglages (stockée uniquement dans le localStorage du navigateur).
   apiKey: import.meta.env?.VITE_GROQ_API_KEY ?? import.meta.env?.GROQ_API_KEY ?? "",
   baseUrl: "https://api.groq.com/openai/v1",
-  // Modèle principal par défaut : le plus capable du catalogue Groq actuel.
-  model: "openai/gpt-oss-120b",
+  // Modèle principal par défaut (rapide et capable pour les rapports rédigés).
+  model: "llama-3.3-70b-versatile",
+  // Passerelle serveur : renseignée au build (VITE_SUPABASE_FUNCTIONS_URL) ou
+  // saisie une fois dans les réglages. C'est le chemin recommandé en production.
+  proxyUrl: import.meta.env?.VITE_SUPABASE_FUNCTIONS_URL ?? "",
 };
 
 export interface ScanMeta {

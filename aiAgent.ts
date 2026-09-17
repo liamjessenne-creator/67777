@@ -7,11 +7,27 @@ import type { AiAudit, AiSettings, Lead, SiteAudit, SiteChecks, SiteVerdict } fr
 // FIX (PROBLÈME 1) : infrastructure réseau commune — timeout explicite, retry
 // exponentiel, erreurs en français et journalisation console de l'erreur exacte.
 import { NetworkError, describeError, fetchWithRetry, fetchWithTimeout, logError, logInfo } from "./net";
+// FIX (PROBLÈME 1) : passerelle serveur — la clé Groq reste dans les secrets
+// Supabase et ne transite JAMAIS par le navigateur.
+import {
+  AI_PROXY_DEFAULT_URL,
+  AiProxyError,
+  DIRECT_AI_KEY_ALLOWED,
+  callAiProxy,
+  callAiProxyStream,
+} from "./aiProxy";
 
 export class AiAgentError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    /**
+     * // FIX (POINT 1) : vrai quand l'échec est une RÉPONSE VIDE. Les modèles
+     * de raisonnement (gpt-oss…) consomment leur budget en réflexion avant de
+     * rédiger : un budget trop serré renvoie une réponse vide. Dans ce cas on
+     * retente UNE fois avec un budget élargi au lieu d'abandonner.
+     */
+    public readonly needsMoreTokens = false,
   ) {
     super(message);
     this.name = "AiAgentError";
@@ -25,15 +41,16 @@ export class AiAgentError extends Error {
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
- * // FIX (PROBLÈME 3) : modèle RAPIDE pour les étapes simples (découverte de
- * site, plan d'action JSON) — le « petit » modèle répond nettement plus vite.
- * // FIX (fiabilité) : ID vérifié en direct sur le catalogue Groq du compte
- * (les modèles Llama ne sont plus exposés par l'API : un ID retiré renvoyait
- * un 404 qui faisait échouer le plan d'action et la découverte de site).
+ * // FIX (PROBLÈME 3) : modèle PRINCIPAL demandé (rapide et solide pour les
+ * rapports rédigés). La fonction Edge bascule AUTOMATIQUEMENT sur un modèle de
+ * repli si un identifiant n'est plus exposé par Groq — l'analyse ne casse pas.
  */
-const FAST_MODEL_ID = "openai/gpt-oss-20b";
-/** Modèle principal conseillé (Groq) : le plus capable du catalogue actuel. */
-export const RECOMMENDED_MODEL = "openai/gpt-oss-120b";
+export const RECOMMENDED_MODEL = "llama-3.3-70b-versatile";
+/**
+ * // FIX (PROBLÈME 3) : modèle RAPIDE pour les étapes simples (découverte de
+ * site, plan d'action JSON) — réponse nettement plus rapide.
+ */
+const FAST_MODEL_ID = "llama-3.1-8b-instant";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -326,6 +343,18 @@ interface ChatOptions {
   maxTokens?: number;
   /** // FIX (PROBLÈME 3) : permet de forcer un modèle (étapes simples → modèle rapide). */
   model?: string;
+  /**
+   * // FIX (POINT 3 — vitesse et fiabilité) : effort de raisonnement des modèles
+   * « reasoning » (gpt-oss). En « low », ils dépensent beaucoup moins de jetons
+   * en réflexion : réponse plus rapide ET plus de place pour le texte final
+   * (un budget consommé par le raisonnement provoque une réponse vide).
+   */
+  reasoningEffort?: "low" | "medium" | "high";
+}
+
+/** Vrai pour les modèles qui raisonnent avant de répondre (gpt-oss, compound). */
+export function isReasoningModel(model: string): boolean {
+  return /gpt-oss|compound/i.test(model);
 }
 
 export class AIAgentService {
@@ -337,9 +366,7 @@ export class AIAgentService {
 
   /**
    * // FIX (PROBLÈME 3) : sur Groq, les étapes simples (JSON courts, découverte
-   * de site) utilisent llama-3.1-8b-instant, bien plus rapide que le 70b.
-   * Sur un autre fournisseur (DeepSeek, Qwen, OpenRouter…), on garde le modèle
-   * choisi par l'utilisateur pour ne jamais envoyer un ID de modèle inconnu.
+   * de site) utilisent un modèle plus rapide que le modèle principal.
    */
   private get fastModel(): string {
     return this.baseUrl.includes("groq") ? FAST_MODEL_ID : this.settings.model;
@@ -352,6 +379,24 @@ export class AIAgentService {
     };
   }
 
+  /**
+   * URL de la fonction Edge Supabase, si elle est configurée (champ Réglages
+   * ou variable d'environnement VITE_SUPABASE_FUNCTIONS_URL).
+   */
+  private get proxyUrl(): string | null {
+    const fromSettings = (this.settings.proxyUrl ?? "").trim();
+    const url = (fromSettings || AI_PROXY_DEFAULT_URL).replace(/\/+$/, "");
+    return url ? url : null;
+  }
+
+  /**
+   * True si l'analyse peut fonctionner : passerelle Edge configurée (chemin
+   * normal) ou, en développement uniquement, clé locale explicitement autorisée.
+   */
+  get isConfigured(): boolean {
+    return Boolean(this.proxyUrl || (DIRECT_AI_KEY_ALLOWED && this.settings.apiKey));
+  }
+
   private buildBody(
     messages: ChatMessage[],
     opts: ChatOptions,
@@ -361,10 +406,15 @@ export class AIAgentService {
     return JSON.stringify({
       model,
       messages,
-      temperature: 0.4,
-      max_tokens: opts.maxTokens ?? 800,
+      // FIX (POINT 2 — fiabilité IA) : 0.3 → réponses stables et reproductibles.
+      temperature: 0.3,
+      max_tokens: Math.min(opts.maxTokens ?? 800, 3_000),
       ...(stream ? { stream: true } : {}),
       ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
+      // FIX (POINT 3) : effort de raisonnement réduit pour les étapes courtes.
+      ...(isReasoningModel(model)
+        ? { reasoning_effort: opts.reasoningEffort ?? (opts.jsonMode ? "low" : "medium") }
+        : {}),
     });
   }
 
@@ -378,46 +428,135 @@ export class AIAgentService {
   }
 
   /**
+   * Modèles de repli utilisés quand un identifiant n'est plus exposé par
+   * l'API (réponse 404 « model not found »). En mode passerelle, la fonction
+   * Edge gère déjà ces replis ; cette chaîne sert au mode développement direct.
+   */
+  private static readonly MODEL_CHAIN = [
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+  ];
+  /** Même principe pour les étapes simples : petit modèle rapide en premier. */
+  private static readonly MODEL_CHAIN_FAST = [
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+  ];
+  /** Modèle réellement utilisé pour un modèle demandé (évite les 404 répétés). */
+  private static readonly resolvedModels = new Map<string, string>();
+
+  private modelsToTry(requested: string): string[] {
+    // Passerelle : la fonction Edge essaie déjà les replis (et les mémorise).
+    if (this.proxyUrl) return [requested];
+    const memo = AIAgentService.resolvedModels.get(requested);
+    const chain = /(8b|instant|mini|20b)/i.test(requested)
+      ? AIAgentService.MODEL_CHAIN_FAST
+      : AIAgentService.MODEL_CHAIN;
+    return [requested, ...(memo ? [memo] : []), ...chain, this.settings.model].filter(
+      (m, i, all) => m && all.indexOf(m) === i,
+    );
+  }
+
+  /**
    * // FIX (PROBLÈME 1 & 3) : appel IA avec TIMEOUT explicite (15 s) et
-   * RETRY automatique (3 tentatives, backoff exponentiel 0,8 s → 1,6 s).
+   * RETRY automatique (3 tentatives, 1 s puis 2 s).
    * Toute erreur est loguée avec son contexte : aucun échec silencieux.
    */
   private async chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    const model = opts.model ?? this.settings.model;
-    try {
-      return await this.chatWithModel(messages, opts, model);
-    } catch (err) {
-      /**
-       * // FIX (PROBLÈME 1 — fiabilité) : si le modèle demandé n'existe plus
-       * (404 « model not found »), on retombe AUTOMATIQUEMENT sur le modèle
-       * principal au lieu de perdre le bloc d'analyse.
-       */
-      if (err instanceof AiAgentError && err.status === 404 && model !== this.settings.model) {
-        logInfo(
-          "aiAgent",
-          `Modèle « ${model} » indisponible (404) — repli automatique sur ${this.settings.model}`,
-        );
-        return this.chatWithModel(messages, opts, this.settings.model);
+    const requested = opts.model ?? this.settings.model;
+    const models = this.modelsToTry(requested);
+    let lastError: unknown;
+
+    for (const model of models) {
+      try {
+        const content = await this.chatWithModel(messages, opts, model);
+        AIAgentService.resolvedModels.set(requested, model);
+        return content;
+      } catch (err) {
+        lastError = err;
+        /**
+         * // FIX (PROBLÈME 1 — fiabilité) : si le modèle demandé n'existe plus
+         * (404 « model not found »), on bascule sur le repli suivant au lieu
+         * de perdre le bloc d'analyse. Les autres erreurs remontent aussitôt.
+         */
+        if (!(err instanceof AiAgentError && err.status === 404)) throw err;
+        logInfo("aiAgent", `Modèle « ${model} » indisponible (404) — repli sur le suivant`);
       }
-      throw err;
     }
+    throw lastError;
   }
 
-  /** Un appel IA pour un modèle donné (timeout 15 s + 3 tentatives). */
+  /**
+   * Un appel IA pour un modèle donné (timeout 15 s + 3 tentatives), avec
+   * auto-réparation : si le modèle renvoie une réponse VIDE (budget de jetons
+   * consommé par la phase de raisonnement), on retente UNE fois en l'élargissant.
+   */
   private async chatWithModel(
     messages: ChatMessage[],
     opts: ChatOptions,
     model: string,
   ): Promise<string> {
+    const budget = opts.maxTokens ?? 800;
+    try {
+      return await this.requestOnce(messages, opts, model, budget);
+    } catch (err) {
+      if (err instanceof AiAgentError && err.needsMoreTokens && budget < 3_000) {
+        const bigger = Math.min(3_000, Math.max(900, budget * 3));
+        logInfo(
+          "aiAgent",
+          `Réponse vide avec ${budget} jetons — nouvelle tentative avec ${bigger} jetons`,
+        );
+        return this.requestOnce(messages, opts, model, bigger);
+      }
+      throw err;
+    }
+  }
+
+  /** Un aller-retour réseau vers le modèle, avec un budget de jetons donné. */
+  private async requestOnce(
+    messages: ChatMessage[],
+    opts: ChatOptions,
+    model: string,
+    budget: number,
+  ): Promise<string> {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     try {
+      /**
+       * FIX (PROBLÈME 1) : chemin NORMAL — tout appel part vers la fonction Edge
+       * Supabase, qui détient la clé côté serveur et gère les tentatives.
+       */
+      const proxy = this.proxyUrl;
+      if (proxy) {
+        return await callAiProxy(proxy, {
+          model,
+          messages,
+          maxTokens: budget,
+          jsonMode: opts.jsonMode === true,
+          reasoningEffort: opts.reasoningEffort ?? (opts.jsonMode ? "low" : "medium"),
+        });
+      }
+
+      // Mode dégradé (développement uniquement, sans fonction Edge déployée) :
+      // la clé est alors dans le navigateur — jamais en production, et il faut
+      // l'autoriser explicitement (VITE_ALLOW_DIRECT_AI_KEY=true).
+      if (!DIRECT_AI_KEY_ALLOWED || !this.settings.apiKey) {
+        throw new AiAgentError(
+          "Oups, l'analyse n'est pas encore configurée : renseignez l'URL de la fonction d'analyse dans ⚙ Réglages (voir supabase/README.md).",
+        );
+      }
+      logInfo(
+        "aiAgent",
+        "Aucune fonction Edge configurée : appel direct à l'API (mode développement explicitement autorisé).",
+      );
       const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: this.headers(),
-        body: this.buildBody(messages, opts, model),
+        body: this.buildBody(messages, { ...opts, maxTokens: budget }, model),
         timeoutMs,
         attempts: 3,
-        baseDelayMs: 800,
+        delays: [1_000, 2_000], // FIX (POINT 1) : 1 s puis 2 s
         label: `IA ${model}`,
       });
 
@@ -428,11 +567,21 @@ export class AIAgentService {
 
       const json = (await res.json()) as ChatResponse;
       const content = json.choices?.[0]?.message?.content;
-      if (!content) throw new AiAgentError("Le modèle IA a renvoyé une réponse vide.");
+      if (!content?.trim()) {
+        // // FIX (POINT 1) : réponse vide → nouvelle tentative avec plus de jetons.
+        throw new AiAgentError(
+          "Le modèle n'a rien renvoyé (réponse vide). Réessayez, ou choisissez un autre modèle dans ⚙ Réglages.",
+          undefined,
+          true,
+        );
+      }
       return content;
     } catch (err) {
       logError("aiAgent", err, { modele: model });
       if (err instanceof AiAgentError) throw err;
+      // Les erreurs de la fonction Edge arrivent déjà en français : on les
+      // transmet telles quelles pour ne jamais doubler le message.
+      if (err instanceof AiProxyError) throw new AiAgentError(err.message, err.status);
       throw new AiAgentError(
         err instanceof NetworkError ? err.message : `Appel IA impossible : ${describeError(err)}`,
       );
@@ -440,17 +589,40 @@ export class AIAgentService {
   }
 
   /**
-   * // FIX (PROBLÈME 1) : JSON robuste — certains fournisseurs (Groq) échouent
-   * par intermittence en mode JSON ; on retente alors en mode texte brut et on
-   * extrait l'objet JSON (extractJson tolère le texte autour).
+   * // FIX (POINT 2 — fiabilité de l'IA) : JSON robuste. Certains fournisseurs
+   * (Groq) échouent par intermittence en mode JSON (`json_validate_failed`) ou
+   * renvoient une génération vide quand le budget est trop serré. On tente donc
+   * TROIS stratégies avant d'abandonner, et on VALIDE le JSON à chaque fois :
+   *   1. mode JSON forcé (response_format json_object) ;
+   *   2. texte brut avec extraction de l'objet JSON ;
+   *   3. texte brut avec un budget de jetons élargi (modèles de raisonnement).
    */
-  private async chatJson(messages: ChatMessage[], opts: ChatOptions = {}): Promise<string> {
-    try {
-      return await this.chat(messages, { ...opts, jsonMode: true });
-    } catch (err) {
-      logInfo("aiAgent", `Mode JSON indisponible, repli en texte brut (${describeError(err)})`);
-      return this.chat(messages, opts);
+  private async chatJson<T>(messages: ChatMessage[], opts: ChatOptions = {}): Promise<T> {
+    const base = opts.maxTokens ?? 400;
+    const plans: Array<{ jsonMode: boolean; budget: number }> = [
+      { jsonMode: true, budget: base },
+      { jsonMode: false, budget: base },
+      { jsonMode: false, budget: Math.min(3_000, Math.max(1_200, base * 3)) },
+    ];
+    let lastError: unknown;
+    for (const plan of plans) {
+      try {
+        const raw = await this.chat(messages, {
+          ...opts,
+          jsonMode: plan.jsonMode,
+          maxTokens: plan.budget,
+        });
+        return extractJson<T>(raw);
+      } catch (err) {
+        lastError = err;
+        logInfo(
+          "aiAgent",
+          `Réponse JSON inexploitable (${plan.jsonMode ? "mode JSON" : "texte brut"}, ${plan.budget} jetons) — nouvelle tentative`,
+          { cause: describeError(err) },
+        );
+      }
     }
+    throw lastError;
   }
 
   /**
@@ -464,6 +636,36 @@ export class AIAgentService {
     opts: ChatOptions & { onDelta: (fullText: string) => void },
   ): Promise<string> {
     const model = opts.model ?? this.settings.model;
+
+    /**
+     * FIX (PROBLÈME 1 & 3) : le STREAMING passe lui aussi par la fonction Edge
+     * — la clé ne quitte jamais le serveur. Si la fonction ne peut pas relayer
+     * le flux, l'erreur remonte et l'appelant retombe sur un appel classique.
+     */
+    const proxy = this.proxyUrl;
+    if (proxy) {
+      try {
+        return await callAiProxyStream(
+          proxy,
+          {
+            model,
+            messages,
+            maxTokens: opts.maxTokens,
+            jsonMode: opts.jsonMode === true,
+            reasoningEffort: opts.reasoningEffort ?? "low",
+          },
+          opts.onDelta,
+        );
+      } catch (err) {
+        logError("aiAgent", err, { modele: model, etape: "streaming via la fonction Edge" });
+        throw err instanceof AiAgentError
+          ? err
+          : new AiAgentError(
+              err instanceof Error ? err.message : `Flux IA interrompu : ${describeError(err)}`,
+            );
+      }
+    }
+
     const controller = new AbortController();
     let idle: ReturnType<typeof setTimeout> = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
     const armIdle = () => {
@@ -471,6 +673,11 @@ export class AIAgentService {
       idle = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
     };
     try {
+      if (!DIRECT_AI_KEY_ALLOWED) {
+        throw new AiAgentError(
+          "Oups, l'analyse n'est pas encore configurée : renseignez l'URL de la fonction d'analyse dans ⚙ Réglages (voir supabase/README.md).",
+        );
+      }
       const res = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: this.headers(),
@@ -523,12 +730,18 @@ export class AIAgentService {
 
   /** Quick connectivity + key validity check from the Settings modal. */
   async testConnection(): Promise<string> {
+    /**
+     * FIX (POINT 1) : budget de 200 jetons (au lieu de 10). Les modèles de
+     * raisonnement consomment des jetons avant de répondre : un budget trop
+     * court renvoyait une réponse VIDE, et le bouton « Enregistrer et tester »
+     * annonçait une erreur alors que la connexion fonctionnait.
+     */
     const reply = await this.chat(
       [
         { role: "system", content: "You are a connection tester. Reply with exactly: OK" },
         { role: "user", content: "ping" },
       ],
-      { timeoutMs: 15_000, maxTokens: 10 },
+      { timeoutMs: 15_000, maxTokens: 200 },
     );
     return stripThinking(reply).slice(0, 40);
   }
@@ -620,7 +833,7 @@ export class AIAgentService {
   async generateActionPlan(lead: Lead): Promise<string[]> {
     // // FIX (PROBLÈME 3) : étape SIMPLE → modèle rapide (8b) + 300 jetons max,
     // et repli automatique en texte brut si le mode JSON échoue.
-    const raw = await this.chatJson(
+    const parsed = await this.chatJson<{ services?: unknown }>(
       [
         { role: "system", content: SYSTEM_PLAN },
         {
@@ -628,9 +841,8 @@ export class AIAgentService {
           content: `Venue data:\n${AIAgentService.venuePayload(lead)}\n\nReturn the JSON object now.`,
         },
       ],
-      { maxTokens: 400, model: this.fastModel },
+      { maxTokens: 500, model: this.fastModel },
     );
-    const parsed = extractJson<{ services?: unknown }>(raw);
     const services = Array.isArray(parsed.services) ? parsed.services : [];
     const cleaned = services
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
@@ -674,8 +886,10 @@ export class AIAgentService {
       // de confiance suffisent) ; repli texte automatique si le JSON échoue.
       // // FIX (fiabilité) : 300 jetons (au lieu de 200) — le mode JSON de Groq
       // renvoyait parfois une génération vide avec un budget trop serré.
-      const raw = await this.chatJson(messages, { maxTokens: 300, model: this.fastModel });
-      const parsed = extractJson<{ website?: unknown; confidence?: unknown }>(raw);
+      const parsed = await this.chatJson<{ website?: unknown; confidence?: unknown }>(messages, {
+        maxTokens: 300,
+        model: this.fastModel,
+      });
       const url = typeof parsed.website === "string" ? parsed.website.trim() : "";
       if (!url || !/^https?:\/\//i.test(url)) return null;
 
@@ -734,12 +948,11 @@ export class AIAgentService {
 
       // // FIX (PROBLÈME 1 & 3) : timeout plafonné à 15 s, 500 jetons max, et
       // repli texte automatique si le fournisseur refuse le mode JSON.
-      const raw = await this.chatJson(messages, { maxTokens: 500 });
-      const parsed = extractJson<{
+      const parsed = await this.chatJson<{
         verdict?: unknown;
         summary?: unknown;
         improvements?: unknown;
-      }>(raw);
+      }>(messages, { maxTokens: 600 });
 
       const verdict: SiteVerdict =
         parsed.verdict === "good" || parsed.verdict === "critical" ? parsed.verdict : "improve";

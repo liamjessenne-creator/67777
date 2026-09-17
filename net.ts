@@ -123,6 +123,13 @@ export interface RetryOptions {
   baseDelayMs?: number;
   /** Délai maximum entre deux tentatives. */
   maxDelayMs?: number;
+  /**
+   * // FIX (PROBLÈME 1) : délais EXPLICITES entre tentatives, appliqués dans
+   * l'ordre (ex. [1000, 2000, 4000] = 1 s puis 2 s puis 4 s). Prioritaire sur
+   * `baseDelayMs` ; le dernier délai est répété si les tentatives sont plus
+   * nombreuses que les délais fournis.
+   */
+  delays?: number[];
   /** Étiquette lisible pour les logs. */
   label?: string;
   /** Prédicat : faut-il retenter ? (par défaut : oui, sauf erreurs « définitives »). */
@@ -140,6 +147,7 @@ export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}
     attempts = 3,
     baseDelayMs = 600,
     maxDelayMs = 8_000,
+    delays,
     label = "requête",
     shouldRetry = isRetryableError,
     onRetry,
@@ -153,7 +161,13 @@ export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}
       lastError = err;
       const retryAllowed = attempt < attempts && shouldRetry(err);
       if (!retryAllowed) break;
-      const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1)) + Math.random() * 250;
+      // // FIX (PROBLÈME 1) : délais explicites si fournis (1 s → 2 s → 4 s),
+      // sinon backoff exponentiel + léger jitter (évite la synchronisation de
+      // plusieurs clients sur le même instant de retry).
+      const delay =
+        delays && delays.length > 0
+          ? delays[Math.min(attempt - 1, delays.length - 1)] + Math.random() * 150
+          : Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1)) + Math.random() * 250;
       logInfo("net", `${label} : échec tentative ${attempt}/${attempts} — nouvelle tentative dans ${Math.round(delay)} ms`, {
         erreur: describeError(err),
       });
@@ -226,6 +240,7 @@ export async function fetchWithRetry(url: string, opts: FetchRetryOptions = {}):
     label = safeHost(url),
     attempts = 3,
     baseDelayMs = 600,
+    delays,
     signal,
     ...rest
   } = opts;
@@ -246,6 +261,7 @@ export async function fetchWithRetry(url: string, opts: FetchRetryOptions = {}):
     {
       attempts,
       baseDelayMs,
+      delays,
       label,
       shouldRetry: (err) => (signal?.aborted ? false : isRetryableError(err)),
       onRetry: opts.onRetry,

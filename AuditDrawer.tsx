@@ -130,9 +130,21 @@ export function AuditDrawer({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/*
+           * FIX (POINT 1) : toute erreur d'analyse est affichée en français,
+           * avec un bouton « Réessayer » — jamais d'écran vide ni silencieux.
+           */}
           {error ? (
-            <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-              {error}
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              <span className="min-w-0 flex-1">{error}</span>
+              <Button
+                size="sm"
+                onClick={() => onRunAudit(lead)}
+                disabled={auditing}
+                title="Relancer l'analyse de ce commerce"
+              >
+                <RefreshCw size={11} className={auditing ? "animate-spin" : ""} /> Réessayer
+              </Button>
             </div>
           ) : null}
 

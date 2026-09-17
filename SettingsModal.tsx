@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { KeyRound, MapPinned, ShieldCheck } from "lucide-react";
 import { AIAgentService, AiAgentError } from "./aiAgent";
+import { DIRECT_AI_KEY_ALLOWED, isProxyConfigured } from "./aiProxy";
 import type { AiSettings } from "./types";
 import { AI_MODELS } from "./types";
 import type { PlacesSettings } from "./places";
@@ -27,6 +28,8 @@ export function SettingsModal({
 }: Props) {
   const [apiKey, setApiKey] = useState(aiSettings.apiKey);
   const [baseUrl, setBaseUrl] = useState(aiSettings.baseUrl);
+  // FIX (PROBLÈME 1) : URL de la fonction Edge Supabase (clé côté serveur).
+  const [proxyUrl, setProxyUrl] = useState(aiSettings.proxyUrl ?? "");
   const [model, setModel] = useState<AiSettings["model"]>(aiSettings.model);
   const [placesKey, setPlacesKey] = useState(placesSettings.apiKey);
   const [placesEnabled, setPlacesEnabled] = useState(placesSettings.enabled);
@@ -37,7 +40,12 @@ export function SettingsModal({
   const handleSaveAndTest = async () => {
     setTesting(true);
     setTestResult(null);
-    const nextAi: AiSettings = { apiKey: apiKey.trim(), baseUrl: baseUrl.trim(), model };
+    const nextAi: AiSettings = {
+      apiKey: apiKey.trim(),
+      baseUrl: baseUrl.trim(),
+      model,
+      proxyUrl: proxyUrl.trim(),
+    };
     const nextPlaces: PlacesSettings = {
       apiKey: placesKey.trim(),
       enabled: placesEnabled && placesKey.trim().length > 0,
@@ -45,8 +53,13 @@ export function SettingsModal({
     onSaveAi(nextAi);
     onSavePlaces(nextPlaces);
 
-    if (!nextAi.apiKey) {
-      setTestResult({ ok: false, msg: "Aucune clé API renseignée." });
+    // // FIX (POINT 1) : sans passerelle Edge, une analyse n'est possible qu'en
+    // développement ET avec l'autorisation explicite de la clé locale.
+    if (!isProxyConfigured(nextAi.proxyUrl) && !(DIRECT_AI_KEY_ALLOWED && nextAi.apiKey)) {
+      setTestResult({
+        ok: false,
+        msg: "Renseignez l'URL de la fonction Edge Supabase (recommandé) : c'est elle qui détient la clé, jamais le navigateur.",
+      });
       setTesting(false);
       return;
     }
@@ -71,12 +84,45 @@ export function SettingsModal({
     <Modal open={open} onClose={onClose} title="Réglages">
       <div className="space-y-4">
         <section className="space-y-3">
+          {/* FIX (PROBLÈME 1) : passerelle serveur = chemin recommandé. */}
+          <section className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-3">
+            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-300">
+              <ShieldCheck size={13} /> Passerelle d'analyse (recommandé)
+            </h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+              URL de la fonction Edge Supabase. Elle seule détient la clé Groq : aucune clé ne
+              circule dans le navigateur. Déploiement décrit dans <code>supabase/README.md</code>.
+            </p>
+            <div className="mt-2">
+              <input
+                type="url"
+                value={proxyUrl}
+                onChange={(e) => setProxyUrl(e.target.value)}
+                placeholder="https://<projet>.supabase.co/functions/v1/groq"
+                className={inputClass}
+                spellCheck={false}
+              />
+            </div>
+            {isProxyConfigured(proxyUrl) ? (
+              <p className="mt-2 text-[11px] text-emerald-300">
+                Passerelle configurée — les analyses passent par le serveur.
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-amber-300">
+                Aucune passerelle configurée : les analyses sont indisponibles.
+                {DIRECT_AI_KEY_ALLOWED
+                  ? " La clé du navigateur est utilisée car le mode développement est explicitement autorisé."
+                  : " Déployez la fonction Edge (supabase/README.md) pour activer l'analyse."}
+              </p>
+            )}
+          </section>
+
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <KeyRound size={13} className="text-accent" /> Fournisseur du modèle (compatible OpenAI)
           </h3>
           <Field
-            label="Clé API (Groq, DeepSeek, Qwen…)"
-            hint="Conservée uniquement dans le stockage local de ce navigateur."
+            label="Clé API — mode développement uniquement"
+            hint="À laisser vide en production : utilisez la passerelle ci-dessus pour que la clé reste côté serveur."
           >
             <input
               type="password"
