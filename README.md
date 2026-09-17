@@ -11,7 +11,10 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 [![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![Canvas Globe](https://img.shields.io/badge/Landing-Chrome%20Globe-61b8ff)](#)
+[![Live demo](https://img.shields.io/badge/demo-geolead--finder.vercel.app-61b8ff)](https://geolead-finder.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-61b8ff.svg)](LICENSE)
+
+**Live:** <https://geolead-finder.vercel.app> · **CI:** typecheck · 41 tests · production build on every push
 
 </div>
 
@@ -95,8 +98,18 @@ VITE_ALLOW_DIRECT_AI_KEY=true
 ```
 
 You can also paste the gateway URL (or the dev key) once in ⚙ Settings inside the app
-(stored in localStorage only). Then: pick a city → **Analyse** → the ranked prospect page
-opens automatically.
+(stored in localStorage only). Then: type a city (Enter works too) → **Analyser la zone**
+→ the ranked prospect page opens automatically.
+
+**Vercel deploy** — `vercel.json` pins the Vite preset, `npm ci` install and `dist/`.
+Production needs the same variable set in the Vercel project (Settings → Environment
+Variables): `VITE_SUPABASE_FUNCTIONS_URL`. Without it, the city scan still works (public
+OpenStreetMap APIs, no key) but the per-business analysis reports that no gateway is
+configured — by design, the Groq key is never shipped to the browser.
+
+```bash
+npx vercel --prod      # deploy the current folder
+```
 
 Other scripts:
 
