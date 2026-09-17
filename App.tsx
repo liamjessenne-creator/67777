@@ -61,7 +61,7 @@ import type {
 } from "./types";
 import type { ScanSummaryData } from "./storage";
 import { queryVenues } from "./overpass";
-import type { GeoPlace } from "./nominatim";
+import type { GeoPlace } from "./geocoding";
 import type { PlacesSettings } from "./places";
 
 const ALL_TYPES: VenueTypeFilter = {
@@ -217,9 +217,13 @@ export default function App() {
       const { venues: allVenues, endpointUsed, durationMs } = await queryVenues(place, {
         // // FIX (PROBLÈME 2) : l'utilisateur voit QUEL miroir est interrogé et
         // combien de temps cela prend — plus jamais d'attente muette.
-        onProgress: ({ host, attempt, total }) =>
+        // // FIX (fiabilité) : on annonce aussi la FORME de recherche quand le
+        // lieu en autorise deux (« emprise » = rectangle, bien plus rapide que
+        // la frontière exacte) — l'utilisateur voit où en est le repli.
+        onProgress: ({ host, attempt, total, shape }) =>
           setScanStep(
-            `Recherche des commerces sur OpenStreetMap… (miroir ${attempt}/${total} : ${host})`,
+            `Recherche des commerces sur OpenStreetMap… (miroir ${attempt}/${total} : ${host}` +
+              `${shape === "emprise" ? ", recherche par emprise" : ""})`,
           ),
       });
       logInfo("scan", `${allVenues.length} commerces via ${endpointUsed} en ${durationMs} ms`, {

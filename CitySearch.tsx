@@ -2,8 +2,8 @@
 
 import { MapPin, Search } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { searchCity } from "./nominatim";
-import type { GeoPlace } from "./nominatim";
+import { searchCity } from "./geocoding";
+import type { GeoPlace } from "./geocoding";
 import { useDebouncedValue } from "./useDebouncedValue";
 
 export function CitySearch({

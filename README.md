@@ -14,7 +14,7 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 [![Live demo](https://img.shields.io/badge/demo-geolead--finder.vercel.app-61b8ff)](https://geolead-finder.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-61b8ff.svg)](LICENSE)
 
-**Live:** <https://geolead-finder.vercel.app> · **CI:** typecheck · 41 tests · production build on every push
+**Live:** <https://geolead-finder.vercel.app> · **CI:** typecheck · 46 tests · production build on every push
 
 </div>
 
@@ -161,21 +161,24 @@ index.html          App.tsx            aiAgent.ts          ui.tsx
 package.json        main.tsx           aiProxy.ts          CitySearch.tsx
 vite.config.ts      index.css          net.ts              LeadsTable.tsx
 tsconfig.json       types.ts           overpass.ts         AuditDrawer.tsx
-tailwind.config.js  storage.ts         nominatim.ts        SettingsModal.tsx
-                    router.ts          enrichment.ts       TopBar.tsx
+tailwind.config.js  storage.ts         geocoding.ts        SettingsModal.tsx
+vercel.json         router.ts          enrichment.ts       TopBar.tsx
                     Landing.tsx        places.ts           FiltersPanel.tsx
                     GlobeStudy.tsx     stats.ts            LegalPages.tsx
                     ChromeCells.tsx    export.ts           ErrorBoundary.tsx
                     LiquidCarveButton.tsx  useDebouncedValue.ts
                     LinkPreview.tsx    thumbnails.ts
-                    net.test.ts  aiProxy.test.ts  enrichment.test.ts
+
+Tests: net.test.ts · geocoding.test.ts · aiProxy.test.ts · aiAgent.test.ts · enrichment.test.ts
+Outils: overpass-test.mjs (valide une requête Overpass pour une ville donnée)
 ```
 
 Plus the AI gateway: `supabase/functions/groq/index.ts` (see `supabase/README.md`).
 
 ## Notes
 
-- Public APIs (Nominatim, Photon, Overpass) are rate-limited — the app retries with backoff and falls back between mirrors/geocoders automatically.
+- **City search** (`geocoding.ts`) chains three independent providers: **Photon** (primary — 0.1–0.2 s, CORS-open, understands districts like “Lyon 3e”, returns an extent), then **Nominatim**, then **Open-Meteo** (GeoNames, not OpenStreetMap at all). Nominatim is kept second on purpose: it sends **no `Access-Control-Allow-Origin` header** (measured), so a normal browser rejects its response — it used to be asked first, wasting a round trip on every keystroke. Results are cached locally for 30 days and every provider result is scan-ready (a bounding box is synthesized from population when the source has none).
+- Public APIs are rate-limited — the app retries with backoff and falls back between providers/mirrors automatically. Overpass queries are built two ways (exact area **and** bounding box) and the second is used when the mirrors time out on the first.
 - The AI website discovery infers the official domain from the venue's name; verified links were confirmed reachable (blue), unverified ones are plausible but unconfirmed (brass) — hover any of them for a live screenshot of the page (keyboard focus works too, and the prospect sheet embeds the screenshot so it is visible on phones).
 - 🔐 **No secrets are committed.** The key lives in `.env.local` (gitignored) or in your browser's localStorage. If you ever leaked a key publicly, rotate it from your [Groq console](https://console.groq.com).
 
