@@ -6,6 +6,7 @@
 
 An internal lead-generation & geographical analysis tool: it scans a city via OpenStreetMap, ranks businesses by how weak their digital footprint is, then uses AI (Groq) to generate a full sales audit, cold-outreach message and priced action plan for each prospect.
 
+[![CI](https://github.com/liamjessenne-creator/67777/actions/workflows/ci.yml/badge.svg)](https://github.com/liamjessenne-creator/67777/actions/workflows/ci.yml)
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
