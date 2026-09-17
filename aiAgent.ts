@@ -446,6 +446,13 @@ export class AIAgentService {
   ];
   /** Modèle réellement utilisé pour un modèle demandé (évite les 404 répétés). */
   private static readonly resolvedModels = new Map<string, string>();
+  /**
+   * Identifiants confirmés ABSENTS du catalogue (404 « model not found »).
+   * Les 4 blocs de l'analyse partent en PARALLÈLE : sans cette mémoire, chacun
+   * repayait le même 404 avant de trouver un modèle valide (un aller-retour
+   * réseau perdu à chaque audit). Ils sont désormais écartés d'emblée.
+   */
+  private static readonly deadModels = new Set<string>();
 
   private modelsToTry(requested: string): string[] {
     // Passerelle : la fonction Edge essaie déjà les replis (et les mémorise).
@@ -455,7 +462,7 @@ export class AIAgentService {
       ? AIAgentService.MODEL_CHAIN_FAST
       : AIAgentService.MODEL_CHAIN;
     return [requested, ...(memo ? [memo] : []), ...chain, this.settings.model].filter(
-      (m, i, all) => m && all.indexOf(m) === i,
+      (m, i, all) => m && all.indexOf(m) === i && !AIAgentService.deadModels.has(m),
     );
   }
 
@@ -482,6 +489,7 @@ export class AIAgentService {
          * de perdre le bloc d'analyse. Les autres erreurs remontent aussitôt.
          */
         if (!(err instanceof AiAgentError && err.status === 404)) throw err;
+        AIAgentService.deadModels.add(model);
         logInfo("aiAgent", `Modèle « ${model} » indisponible (404) — repli sur le suivant`);
       }
     }

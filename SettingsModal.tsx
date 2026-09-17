@@ -206,12 +206,14 @@ export function SettingsModal({
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between border-t border-white/10 pt-4">
-          <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            <ShieldCheck size={12} /> Les clés ne quittent jamais votre navigateur, sauf pour
-            appeler directement les API concernées.
+        {/* Sur écran étroit, la note et les boutons s'empilent : côte à côte, le
+            texte se réduisait à une colonne de 2 mots sous les boutons. */}
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <span className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
+            <ShieldCheck size={12} className="mt-0.5 shrink-0" /> Les clés ne quittent jamais votre
+            navigateur, sauf pour appeler directement les API concernées.
           </span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={onClose}>Fermer</Button>
             <Button variant="primary" onClick={handleSaveAndTest} disabled={testing}>
               {testing ? <Spinner size={14} /> : null}

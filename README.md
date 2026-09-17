@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎯 GeoLead Finder AI
+# 🎯 GeoLead Finder
 
 **Find local businesses with a weak digital presence — and turn them into web-design clients.**
 
@@ -10,8 +10,8 @@ An internal lead-generation & geographical analysis tool: it scans a city via Op
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646cff?logo=vite)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
-[![Canvas Globe](https://img.shields.io/badge/Landing-Interactive%20Globe-10b981)](#)
-[![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg)](LICENSE)
+[![Canvas Globe](https://img.shields.io/badge/Landing-Chrome%20Globe-61b8ff)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-61b8ff.svg)](LICENSE)
 
 </div>
 
@@ -127,9 +127,16 @@ node overpass-test.mjs "Paris"   # validate Overpass queries for a city
 
 ## Tech stack
 
-React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · HTML-canvas globe (zero map dependencies) · WebGL **Chrome Cells** background · react-markdown · Vitest
+React 18 · Vite 5 · TypeScript (strict) · Tailwind CSS · canvas globe (zero map dependencies) · WebGL **Chrome Cells** background · framer-motion (liquid-carve buttons) · react-markdown · Vitest
 
-**Langue & typographie** — the whole interface is in **French**. Type is bundled locally (no CDN): **Sora** for headings and brand, **Manrope** for the interface, **JetBrains Mono** for figures and data.
+**Langue & typographie** — the whole interface is in **French**. Type is bundled locally, no CDN: **Sora** for headings and brand, **Manrope** for the interface, **JetBrains Mono** for figures and data.
+
+### Design system
+
+- **Chrome text** — `.text-chrome` / `.text-chrome-live` paint headlines, headers and key figures with a brushed-metal gradient (brushed band + moving sheen).
+- **Liquid glass widgets** — `.glass`, `.glass-strong`, `.glass-live` and the `.carve-glass*` button shells: translucent gradient, `backdrop-filter` blur + saturation, lit top edge and an inner bottom shadow.
+- **Palette** — chrome/silver ramp for text, **blue ⇄ white animated** (`#61b8ff`) as the single accent (positive states included), **classes Bordeaux** (`#a8283f` / `#d2647c`) for errors and priority targets, discreet **brass** for “to be confirmed”.
+- **Provided components**, kept faithful to their source: `GlobeStudy.tsx` (chrome wireframe globe, letters on the continents, click to drop a pin), `LiquidCarveButton.tsx` (buttons), `ChromeCells.tsx` (page background), `LinkPreview.tsx` (site thumbnails on hover, via Microlink).
 
 ## Project layout
 
@@ -137,21 +144,25 @@ Flat on purpose — every file at the root:
 
 ```
 index.html          App.tsx            aiAgent.ts          ui.tsx
-package.json        main.tsx           overpass.ts         CitySearch.tsx
-vite.config.ts      index.css          enrichment.ts       LeadsTable.tsx
-tsconfig.json       types.ts           nominatim.ts        AuditDrawer.tsx
-tailwind.config.js  storage.ts         places.ts           SettingsModal.tsx
-                    router.ts          stats.ts            TopBar.tsx
-                    Globe.tsx          export.ts           FiltersPanel.tsx
-                    Landing.tsx        useDebouncedValue.ts
-                    LegalPages.tsx
-                    enrichment.test.ts  overpass-test.mjs
+package.json        main.tsx           aiProxy.ts          CitySearch.tsx
+vite.config.ts      index.css          net.ts              LeadsTable.tsx
+tsconfig.json       types.ts           overpass.ts         AuditDrawer.tsx
+tailwind.config.js  storage.ts         nominatim.ts        SettingsModal.tsx
+                    router.ts          enrichment.ts       TopBar.tsx
+                    Landing.tsx        places.ts           FiltersPanel.tsx
+                    GlobeStudy.tsx     stats.ts            LegalPages.tsx
+                    ChromeCells.tsx    export.ts           ErrorBoundary.tsx
+                    LiquidCarveButton.tsx  useDebouncedValue.ts
+                    LinkPreview.tsx
+                    net.test.ts  aiProxy.test.ts  enrichment.test.ts
 ```
+
+Plus the AI gateway: `supabase/functions/groq/index.ts` (see `supabase/README.md`).
 
 ## Notes
 
 - Public APIs (Nominatim, Photon, Overpass) are rate-limited — the app retries with backoff and falls back between mirrors/geocoders automatically.
-- The AI website discovery infers the official domain from the venue's name; verified (green ✓) links were confirmed reachable, unverified (blue ?) ones are plausible but unconfirmed.
+- The AI website discovery infers the official domain from the venue's name; verified links were confirmed reachable (blue), unverified ones are plausible but unconfirmed (brass) — hover any of them for a live thumbnail of the page.
 - 🔐 **No secrets are committed.** The key lives in `.env.local` (gitignored) or in your browser's localStorage. If you ever leaked a key publicly, rotate it from your [Groq console](https://console.groq.com).
 
 ## License

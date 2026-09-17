@@ -1,8 +1,53 @@
-/** Small shared UI primitives — liquid glass, chrome text, animated blue/white accent. */
+/**
+ * Small shared UI primitives — liquid glass, chrome text, animated blue/white accent.
+ *
+ * Les boutons sont désormais rendus par le composant fourni **Liquid Carve
+ * Button** (forme creusée à la souris) posé sur une coque de verre liquide
+ * (`.carve-glass`). L'API publique reste identique à avant (children, onClick,
+ * variant, size, disabled, type, className, title) : aucun appelant à modifier.
+ */
 
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import LiquidCarveButton from "./LiquidCarveButton";
+
+/** Texte d'un contenu React (sert d'étiquette accessible et de libellé). */
+function textOf(node: ReactNode): string {
+  if (node == null || node === false) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join(" ").trim();
+  if (typeof node === "object" && "props" in (node as { props?: unknown })) {
+    return textOf((node as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
+
+const BUTTON_FONT = "Manrope Variable, Manrope, ui-sans-serif, system-ui, sans-serif";
+
+type Variant = "default" | "primary" | "danger" | "ghost";
+
+/** Coque de verre (CSS) + couleur de remplissage/bulle passée au composant. */
+const SHELLS: Record<Variant, string> = {
+  default: "",
+  primary: "carve-glass-primary",
+  danger: "carve-glass-danger",
+  ghost: "carve-glass-ghost",
+};
+
+const PAINTS: Record<Variant, { fill: string; blob: string; text: string; weight: number }> = {
+  default: { fill: "rgba(255,255,255,0.06)", blob: "rgba(255,255,255,0.85)", text: "#e1e8f0", weight: 500 },
+  primary: { fill: "rgba(255,255,255,0.10)", blob: "rgba(255,255,255,0.95)", text: "#ffffff", weight: 700 },
+  danger: { fill: "rgba(168,40,63,0.14)", blob: "rgba(210,100,124,0.45)", text: "#f4c3cd", weight: 600 },
+  ghost: { fill: "rgba(255,255,255,0.02)", blob: "rgba(255,255,255,0.35)", text: "#a2aebc", weight: 500 },
+};
+
+const SIZES = {
+  xs: { padding: "4px 10px", fontSize: 10, blob: 30 },
+  sm: { padding: "6px 11px", fontSize: 11, blob: 40 },
+  md: { padding: "9px 16px", fontSize: 13, blob: 54 },
+  lg: { padding: "13px 26px", fontSize: 14, blob: 68 },
+} as const;
 
 export function Button({
   children,
@@ -13,44 +58,69 @@ export function Button({
   type = "button",
   className = "",
   title,
+  stopPropagation,
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "default" | "primary" | "danger" | "ghost";
-  size?: "sm" | "md";
+  variant?: Variant;
+  size?: "xs" | "sm" | "md" | "lg";
   disabled?: boolean;
+  /** Conservé pour compatibilité d'API (le bouton n'est plus un <button> natif). */
   type?: "button" | "submit";
   className?: string;
   title?: string;
+  /** Empêche le clic de remonter au parent (lignes de tableau cliquables). */
+  stopPropagation?: boolean;
 }) {
-  const base =
-    "relative inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70";
-  /**
-   * Cibles tactiles confortables (≥ 36 px de haut, la taille `md` atteint les
-   * 40 px avec la bordure) — le verre reste lisible au doigt.
-   */
-  const sizes = { sm: "px-3 py-1.5 text-xs min-h-[30px]", md: "px-4 py-2.5 text-sm min-h-[40px]" };
-  const variants = {
-    default:
-      "glass glass-sheen text-slate-100 hover:border-slate-300/40 hover:shadow-glow-sm",
-    // Accent VIVANT : dégradé bleu ⇄ blanc animé (remplace l'ancien vert).
-    primary:
-      "accent-live border border-white/25 font-semibold shadow-glow shadow-glow hover:brightness-110",
-    // Bordeaux classe (remplace le rouge vif).
-    danger:
-      "glass border-red-400/45 text-red-300 hover:border-red-300/60 hover:bg-red-500/15 hover:shadow-glow-red",
-    ghost: "text-slate-300 hover:text-white hover:bg-slate-100/10",
-  };
+  const paint = PAINTS[variant];
+  const dims = SIZES[size];
+  const label = textOf(children);
+  void type;
+
   return (
-    <button
-      type={type}
+    <span
+      role="presentation"
       title={title}
-      onClick={onClick}
-      disabled={disabled}
-      className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}
+      aria-disabled={disabled ? true : undefined}
+      onClick={
+        disabled
+          ? undefined
+          : (e) => {
+              if (stopPropagation) e.stopPropagation();
+              onClick?.();
+            }
+      }
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (stopPropagation) e.stopPropagation();
+          onClick?.();
+        }
+      }}
+      className={`carve-glass ${SHELLS[variant]} ${
+        disabled ? "pointer-events-none opacity-40" : ""
+      } ${className}`}
     >
-      {children}
-    </button>
+      <LiquidCarveButton
+        label={label || title || "action"}
+        rounded={100}
+        padding={dims.padding}
+        fill={paint.fill}
+        blob={{ color: paint.blob, size: dims.blob, smoothness: 58 }}
+        textColor={paint.text}
+        font={{
+          fontFamily: BUTTON_FONT,
+          fontWeight: paint.weight,
+          fontSize: dims.fontSize,
+          lineHeight: 1,
+          letterSpacing: "0.01em",
+        }}
+        transition={{ type: "spring", stiffness: 170, damping: 18, mass: 0.9 }}
+      >
+        <span className="inline-flex items-center gap-1.5">{children}</span>
+      </LiquidCarveButton>
+    </span>
   );
 }
 
@@ -109,13 +179,9 @@ export function Modal({
           <h2 className="text-chrome font-mono text-sm font-semibold uppercase tracking-[0.16em]">
             {title}
           </h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-300 transition-colors hover:bg-slate-100/10 hover:text-white"
-            aria-label="Fermer"
-          >
+          <Button size="sm" variant="ghost" title="Fermer" onClick={onClose}>
             <X size={16} />
-          </button>
+          </Button>
         </div>
         <div className="px-5 py-4">{children}</div>
       </div>

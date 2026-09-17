@@ -198,8 +198,13 @@ export default function App() {
   );
 
   // ---- scan flow ----
-  const analyzeArea = useCallback(async () => {
-    if (!selectedPlace) return;
+  // // FIX (mobile & clavier) : la ville peut être passée en argument. Appuyer
+  // sur Entrée dans le champ ville lance ainsi l'analyse tout de suite, sans
+  // dépendre d'un état React pas encore appliqué (l'ancien bouton restait
+  // inactif après un rechargement, alors que des résultats étaient affichés).
+  const analyzeArea = useCallback(async (placeArg?: GeoPlace) => {
+    const place = placeArg ?? selectedPlace;
+    if (!place) return;
     // // FIX (PROBLÈME 2) : on mémorise le dernier scan réussi AVANT de toucher
     // aux résultats → repli « résultats en cache » si le réseau lâche.
     const previousLeads = leadsRef.current;
@@ -209,7 +214,7 @@ export default function App() {
     setUsingCache(false);
     setScanStep("Recherche des commerces sur OpenStreetMap…");
     try {
-      const { venues: allVenues, endpointUsed, durationMs } = await queryVenues(selectedPlace, {
+      const { venues: allVenues, endpointUsed, durationMs } = await queryVenues(place, {
         // // FIX (PROBLÈME 2) : l'utilisateur voit QUEL miroir est interrogé et
         // combien de temps cela prend — plus jamais d'attente muette.
         onProgress: ({ host, attempt, total }) =>
@@ -218,7 +223,7 @@ export default function App() {
           ),
       });
       logInfo("scan", `${allVenues.length} commerces via ${endpointUsed} en ${durationMs} ms`, {
-        ville: selectedPlace.displayName,
+        ville: place.displayName,
       });
 
       // Don't dump the whole metropolitan area: cap the scan so results stay
@@ -228,7 +233,7 @@ export default function App() {
       const capped = allVenues.length > SCAN_CAP;
       if (venues.length === 0) {
         throw new Error(
-          `Aucun commerce trouvé à « ${selectedPlace.shortName} ». Essayez une zone plus large ou un autre quartier.`,
+          `Aucun commerce trouvé à « ${place.shortName} ». Essayez une zone plus large ou un autre quartier.`,
         );
       }
 
@@ -303,10 +308,10 @@ export default function App() {
       }
 
       const meta: ScanMeta = {
-        city: selectedPlace.shortName,
-        displayName: selectedPlace.displayName,
-        lat: selectedPlace.lat,
-        lon: selectedPlace.lon,
+        city: place.shortName,
+        displayName: place.displayName,
+        lat: place.lat,
+        lon: place.lon,
         radiusKm: 0,
         scannedAt: new Date().toISOString(),
         totalFound: venues.length,
@@ -317,7 +322,7 @@ export default function App() {
       const totalMs = Date.now() - startedAt;
       // // FIX (PROBLÈME 2) : le résumé (avec date + durée) sert aussi de cache.
       setScanSummary({
-        city: selectedPlace.shortName,
+        city: place.shortName,
         total: venues.length,
         high,
         capped,
@@ -333,7 +338,7 @@ export default function App() {
     } catch (err) {
       // // FIX (PROBLÈME 1) : message clair en français + erreur exacte en console.
       const message = describeError(err);
-      logError("scan", err, { ville: selectedPlace.displayName });
+      logError("scan", err, { ville: place.displayName });
       setScanError(message);
       setScanStep(null);
       // // FIX (PROBLÈME 2) : repli automatique sur le cache local (dernier scan
@@ -415,7 +420,7 @@ export default function App() {
         setAuditError(
           err instanceof AiAgentError
             ? err.message
-            : `L'audit IA a échoué : ${describeError(err)}. Relancez l'analyse.`,
+            : `L'analyse a échoué : ${describeError(err)}. Relancez l'analyse.`,
         );
       } finally {
         setAuditingId(null);
@@ -535,7 +540,7 @@ export default function App() {
             site: lead.venue.website,
           });
           setAuditError(
-            `Impossible d'analyser le site de « ${lead.venue.name} » : le site n'a pas répondu (ou l'IA est indisponible). Réessayez dans un instant.`,
+            `Impossible d'analyser le site de « ${lead.venue.name} » : le site n'a pas répondu (ou le service d'analyse est indisponible). Réessayez dans un instant.`,
           );
         }
       } catch (err) {
@@ -548,13 +553,21 @@ export default function App() {
     [aiSettings, aiConfigured, siteCheckingId],
   );
 
-  const handleSelectPlace = useCallback((place: GeoPlace) => {
-    setSelectedPlace(place);
-    setScanError(null);
-    setUsingCache(false);
-    // // FIX (PROBLÈME 2) : message d'étape en français, cohérent partout.
-    setStatusMsg(`${place.shortName} sélectionné — prêt à analyser.`);
-  }, []);
+  const handleSelectPlace = useCallback(
+    (place: GeoPlace, runImmediately?: boolean) => {
+      setSelectedPlace(place);
+      setScanError(null);
+      setUsingCache(false);
+      if (runImmediately) {
+        // Entrée dans le champ ville : on enchaîne directement sur l'analyse.
+        void analyzeArea(place);
+        return;
+      }
+      // // FIX (PROBLÈME 2) : message d'étape en français, cohérent partout.
+      setStatusMsg(`${place.shortName} sélectionné — prêt à analyser.`);
+    },
+    [analyzeArea],
+  );
 
   // ---- routing render ----
   if (route.role === "legal") {
@@ -603,29 +616,30 @@ export default function App() {
             value={cityQuery}
             onChange={setCityQuery}
             onSelect={handleSelectPlace}
+            /* Entrée sans suggestion en attente : relance l'analyse de la ville
+               déjà choisie (le bouton juste à côté reste le chemin principal). */
+            onSubmit={() => void analyzeArea()}
             disabled={scanning}
           />
           <Button
             variant="primary"
-            onClick={analyzeArea}
+            onClick={() => void analyzeArea()}
             disabled={scanning || !selectedPlace}
             title={selectedPlace ? `Analyser ${selectedPlace.shortName}` : "Choisissez d'abord une ville"}
           >
             {scanning ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
             {scanning ? "Analyse…" : "Analyser la zone"}
           </Button>
-          <button
+          <Button
+            size="md"
+            variant={showFilters ? "primary" : "default"}
             onClick={() => setShowFilters((v) => !v)}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors xl:hidden ${
-              showFilters
-                ? "border-accent/50 bg-accent/10 text-emerald-300"
-                : "border-white/12 text-slate-300 hover:border-slate-300/40"
-            }`}
+            className="xl:hidden"
             title="Filtres"
           >
             <SlidersHorizontal size={14} />
             <span className="hidden sm:inline">Filtres</span>
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -660,7 +674,7 @@ export default function App() {
             </span>
           ) : null}
           {scanError ? (
-            <Button size="sm" onClick={analyzeArea} className="ml-auto shrink-0">
+            <Button size="sm" onClick={() => void analyzeArea()} className="ml-auto shrink-0">
               <RotateCcw size={11} /> Réessayer
             </Button>
           ) : null}
@@ -801,7 +815,9 @@ export default function App() {
               </div>
             </aside>
 
-            <div className="glass overflow-hidden rounded-2xl">
+            {/* Sans `overflow-hidden` : les aperçus de sites (Link Preview) qui
+                s'ouvrent au-dessus des premières lignes ne sont plus rognés. */}
+            <div className="glass rounded-2xl">
               <LeadsTable
                 leads={sortedLeads}
                 selectedId={selectedId}

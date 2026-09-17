@@ -3,6 +3,7 @@
 import { Copy, ExternalLink, FileText, Gauge, Globe, MessageSquare, RefreshCw, Target, X } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import LinkPreview from "./LinkPreview";
 import type { AiAudit, Lead } from "./types";
 import { VENUE_TYPE_LABELS } from "./types";
 import { PRIORITY_LABELS, priorityBadgeClass } from "./stats";
@@ -83,13 +84,15 @@ export function AuditDrawer({
                 {VENUE_TYPE_LABELS[lead.venue.venueType]} · {lead.venue.address}
               </p>
             </div>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Fermer"
               onClick={onClose}
-              className="rounded p-1 text-slate-500 hover:bg-slate-700/40 hover:text-slate-200"
-              aria-label="Fermer"
+              className="shrink-0"
             >
               <X size={18} />
-            </button>
+            </Button>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className={`rounded border px-1.5 py-0.5 font-semibold uppercase ${priorityBadgeClass(lead.enrichment.priority)}`}>
@@ -171,13 +174,38 @@ export function AuditDrawer({
                         ? "À améliorer"
                         : "Critique"}
                   </span>
+                  {/* Aperçu visuel du site (composant fourni « Link Preview ») :
+                      la fiche de prospection montre le site tel qu'il est. */}
+                  <LinkPreview
+                    title={lead.siteAudit.url.replace(/^https?:\/\//, "")}
+                    link={lead.siteAudit.url}
+                    imageMode="original"
+                    customImage={{ src: "" }}
+                    previewWidth={380}
+                    previewHeight={214}
+                    radius={14}
+                    shadow
+                    shadowColor="rgba(0,0,0,0.55)"
+                    textColor="#cfdae4"
+                    underlineColor="rgba(147,162,177,0.5)"
+                    font={{
+                      fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
+                      fontSize: 11,
+                      fontWeight: 400,
+                      letterSpacing: "0",
+                      lineHeight: 1.4,
+                    }}
+                    /* Idem : pas de rognage, sinon l'aperçu flottant disparaît. */
+                    style={{ maxWidth: 240 }}
+                  />
                   <a
                     href={lead.siteAudit.url}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="inline-flex items-center gap-1 truncate font-mono text-[11px] text-sky-300 hover:underline"
+                    className="inline-flex items-center gap-1 text-platinum-300 hover:text-white"
+                    title="Ouvrir le site dans un nouvel onglet"
                   >
-                    {lead.siteAudit.url} <ExternalLink size={10} />
+                    <ExternalLink size={11} />
                   </a>
                 </div>
                 <p className="mt-2 text-[13px] leading-relaxed text-slate-300">
@@ -269,12 +297,14 @@ export function AuditDrawer({
                     <Target size={13} className="text-accent" /> Rapport de présence numérique
                   </h3>
                   {audit.gapReport ? (
-                    <button
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      title="Copier le rapport"
                       onClick={() => copy(audit.gapReport, "gap")}
-                      className="text-[11px] text-slate-500 hover:text-accent"
                     >
                       {copied === "gap" ? "Copié !" : <Copy size={12} />}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
                 {audit.gapReport ? (
@@ -300,28 +330,26 @@ export function AuditDrawer({
                   </h3>
                   <div className="flex items-center gap-1.5">
                     {(["sms", "whatsapp", "email"] as const).map((c) => (
-                      <button
+                      <Button
                         key={c}
+                        size="xs"
+                        variant={channel === c ? "primary" : "ghost"}
                         onClick={() => {
                           setChannel(c);
                           onRegenerateOutreach(lead, c);
                         }}
-                        className={`rounded px-2 py-0.5 text-[11px] uppercase transition-colors ${
-                          channel === c
-                            ? "bg-accent/20 text-emerald-300"
-                            : "text-slate-500 hover:text-slate-300"
-                        }`}
                       >
                         {c}
-                      </button>
+                      </Button>
                     ))}
-                    <button
-                      onClick={() => copy(audit.outreach, "outreach")}
-                      className="ml-1 text-[11px] text-slate-500 hover:text-accent"
+                    <Button
+                      size="xs"
+                      variant="ghost"
                       title="Copier le message"
+                      onClick={() => copy(audit.outreach, "outreach")}
                     >
                       {copied === "outreach" ? "Copié !" : <Copy size={12} />}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 {audit.outreach ? (
@@ -336,16 +364,18 @@ export function AuditDrawer({
                     label={
                       auditing
                         ? "Rédaction du message de contact…"
-                        : "Non généré (erreur IA) — relancez l'audit."
+                        : "Non généré (erreur d'analyse) — relancez l'audit."
                     }
                   />
                 )}
-                <button
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="mt-1.5"
                   onClick={() => onRegenerateOutreach(lead, channel)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-accent"
                 >
                   <RefreshCw size={11} /> Régénérer en {channel}
-                </button>
+                </Button>
               </section>
 
               {/* 3. Action plan */}
@@ -354,12 +384,14 @@ export function AuditDrawer({
                   <h3 className="flex items-center gap-1.5 text-chrome text-xs font-semibold uppercase tracking-[0.14em]">
                     <FileText size={13} className="text-accent" /> Plan d'action — 3 prestations
                   </h3>
-                  <button
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    title="Copier le plan"
                     onClick={() => copy(audit.actionPlan.join("\n"), "plan")}
-                    className="text-[11px] text-slate-500 hover:text-accent"
                   >
                     {copied === "plan" ? "Copié !" : <Copy size={12} />}
-                  </button>
+                  </Button>
                 </div>
                 {audit.actionPlan.length > 0 ? (
                   <ol className="space-y-2">
@@ -378,7 +410,7 @@ export function AuditDrawer({
                     label={
                       auditing
                         ? "Construction du plan d'action…"
-                        : "Non généré (erreur IA) — relancez l'audit."
+                        : "Non généré (erreur d'analyse) — relancez l'audit."
                     }
                   />
                 )}

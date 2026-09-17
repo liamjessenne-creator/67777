@@ -32,20 +32,14 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
           <span className="text-chrome font-mono text-[10px] font-semibold uppercase tracking-[0.2em]">
             Types de commerce
           </span>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setAll(true)}
-              className="text-[10px] text-slate-500 hover:text-accent"
-            >
+          <div className="flex items-center gap-1">
+            <Button size="xs" variant="ghost" onClick={() => setAll(true)}>
               tous
-            </button>
+            </Button>
             <span className="text-[10px] text-slate-700">/</span>
-            <button
-              onClick={() => setAll(false)}
-              className="text-[10px] text-slate-500 hover:text-accent"
-            >
+            <Button size="xs" variant="ghost" onClick={() => setAll(false)}>
               aucun
-            </button>
+            </Button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-1.5">
@@ -127,7 +121,7 @@ export function FiltersPanel({ venueTypes, digital, onVenueTypes, onDigital, dis
         </span>
         <ul className="space-y-1 text-[11px] text-slate-400">
           <li className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(168,40,63,0.8)]" />
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(168,40,63,0.8)]" />
             Bordeaux — cible prioritaire
           </li>
           <li className="flex items-center gap-2">

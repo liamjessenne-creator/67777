@@ -13,6 +13,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { logError } from "./net";
+import { Button } from "./ui";
 
 interface Props {
   children: ReactNode;
@@ -59,18 +60,12 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error.message}
           </pre>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={this.retry}
-              className="accent-live rounded-lg border border-white/25 px-3 py-2 text-xs font-semibold shadow-glow transition-all hover:brightness-110"
-            >
+            <Button variant="primary" onClick={this.retry}>
               Réessayer
-            </button>
-            <button
-              onClick={this.hardReset}
-              className="glass rounded-lg border-red-400/40 px-3 py-2 text-xs text-red-300 transition-colors hover:bg-red-500/12"
-            >
+            </Button>
+            <Button variant="danger" onClick={this.hardReset}>
               Réinitialiser l'application
-            </button>
+            </Button>
           </div>
         </div>
       </div>

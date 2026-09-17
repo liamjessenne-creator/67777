@@ -2,7 +2,7 @@
 
 import { Settings, Store } from "lucide-react";
 import type { Stats } from "./stats";
-import { StatChip } from "./ui";
+import { Button, StatChip } from "./ui";
 
 export function TopBar({
   stats,
@@ -61,17 +61,15 @@ export function TopBar({
           <StatChip label="Cibles" value={stats.highPriority} tone="red" />
           <StatChip label="Qualifiés" value={stats.qualifiedLeads} tone="emerald" />
         </span>
-        <button
-          onClick={onOpenSettings}
+        <Button
+          size="sm"
+          variant={settingsOk ? "ghost" : "danger"}
           title="Réglages"
-          className={`shrink-0 rounded-lg border p-2 transition-colors ${
-            settingsOk
-              ? "border-white/10 text-slate-400 hover:text-accent"
-              : "border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
-          }`}
+          onClick={onOpenSettings}
+          className="shrink-0"
         >
           <Settings size={16} />
-        </button>
+        </Button>
       </div>
     </header>
   );

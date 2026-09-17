@@ -6,6 +6,7 @@
 import { ArrowLeft, Scale } from "lucide-react";
 import type { ReactNode } from "react";
 import type { LegalPage } from "./types";
+import { Button } from "./ui";
 
 interface Props {
   page: LegalPage;
@@ -20,7 +21,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
       <>
         <Section title="Éditeur de l'application">
           <p>
-            <strong>GeoLead Finder AI</strong> est un outil open-source de prospection
+            <strong>GeoLead Finder</strong> est un outil open-source de prospection
             commerciale, publié à titre personnel par l'exploitant du dépôt GitHub{" "}
             <a href="https://github.com/liamjessenne-creator/67777" target="_blank" rel="noreferrer noopener">
               liamjessenne-creator/67777
@@ -37,7 +38,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
         </Section>
         <Section title="Nature du service">
           <p>
-            GeoLead Finder AI est un <strong>outil d'aide à la prospection</strong> destiné
+            GeoLead Finder est un <strong>outil d'aide à la prospection</strong> destiné
             aux prestataires de services numériques. Il agrège des données
             publiquement accessibles afin d'identifier des entreprises dont la
             présence numérique est faible, et génère des audits commerciaux assistés
@@ -79,7 +80,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
       <>
         <Section title="Principe : zéro serveur, zéro tracking">
           <p>
-            GeoLead Finder AI ne possède <strong>aucun serveur</strong>, aucun compte
+            GeoLead Finder ne possède <strong>aucun serveur</strong>, aucun compte
             utilisateur, aucun cookie publicitaire et <strong>aucun outil de
             traçage</strong>. L'application est une page web statique : tout ce que
             vous faites reste sur votre appareil.
@@ -145,7 +146,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
         <Section title="1. Objet">
           <p>
             Les présentes conditions régissent l'utilisation de l'application
-            GeoLead Finder AI, outil d'aide à la prospection commerciale combinant
+            GeoLead Finder, outil d'aide à la prospection commerciale combinant
             données cartographiques publiques et analyse par intelligence
             artificielle. En utilisant l'application, vous acceptez ces conditions
             sans réserve.
@@ -226,14 +227,11 @@ export function LegalPageView({ page, onBack }: Props) {
     <div className="bg-grid min-h-full">
       <header className="border-b border-white/10 bg-black/45 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-3">
-          <button
-            onClick={onBack}
-            className="glass inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-colors hover:border-accent/50 hover:text-accent"
-          >
+          <Button size="sm" onClick={onBack}>
             <ArrowLeft size={13} /> Retour
-          </button>
+          </Button>
           <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            <Scale size={12} /> GeoLead Finder AI
+            <Scale size={12} /> GeoLead Finder
           </span>
         </div>
       </header>

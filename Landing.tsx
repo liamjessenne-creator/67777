@@ -3,11 +3,14 @@
  * avec les liens légaux (mentions légales, confidentialité, CGU).
  *
  * Le fond animé ChromeCells (composant fourni) est utilisé tel quel, plein écran.
+ * Le globe est le composant fourni **Globe Study**, utilisé tel quel, en palette
+ * chrome (argent métallique) et sur une colonne ÉLARGIE.
  */
 
 import { ArrowRight, Download, FileText, ListOrdered, Radar, Store } from "lucide-react";
-import { Globe } from "./Globe";
+import GlobeStudy from "./GlobeStudy";
 import ChromeCells from "./ChromeCells";
+import { Button } from "./ui";
 
 interface Props {
   onEnter: () => void;
@@ -79,7 +82,11 @@ export function Landing({ onEnter }: Props) {
 
         {/* ---- Section principale ---- */}
         <section className="relative flex min-h-[calc(100vh-56px)] flex-col overflow-hidden">
-          <div className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 items-center gap-8 px-6 py-10 lg:grid-cols-2">
+          {/*
+           * Colonne du globe nettement plus large que le texte
+           * (≈ 1,85 contre 1 en grand écran) : le globe occupe l'espace.
+           */}
+          <div className="relative z-10 mx-auto grid w-full max-w-[110rem] flex-1 items-center gap-8 px-6 py-8 lg:grid-cols-[minmax(0,0.54fr)_minmax(0,1.46fr)] lg:gap-8">
             <div className="max-w-xl drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]">
               <h1 className="text-chrome text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
                 Trouvez les commerces{" "}
@@ -93,12 +100,9 @@ export function Landing({ onEnter }: Props) {
                 le rapport, le message de contact et le plan d'action pour chacun.
               </p>
               <div className="mt-7 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onEnter}
-                  className="accent-live liquid-edge inline-flex items-center gap-2 rounded-xl border border-white/25 px-6 py-3 text-sm font-semibold shadow-glow transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
-                >
+                <Button size="lg" variant="primary" onClick={onEnter}>
                   Ouvrir l'outil <ArrowRight size={16} />
-                </button>
+                </Button>
                 <span className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
                   ou cliquez sur le globe
                 </span>
@@ -117,11 +121,67 @@ export function Landing({ onEnter }: Props) {
               </dl>
             </div>
 
-            {/* Globe — interactif */}
-            <div className="relative h-[46vh] min-h-[320px] lg:h-[70vh]">
-              <Globe onEnter={onEnter} focus />
-              <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.28em] text-slate-500">
-                faire glisser · cliquer pour entrer
+            {/*
+             * Globe Study (composant fourni, utilisé tel quel) en palette chrome :
+             * fond transparent pour laisser voir le shader ChromeCells, points et
+             * lettres en argent métallique. `style` neutralise seulement le
+             * minWidth/minHeight du conteneur du composant (débordement mobile).
+             */}
+            <div
+              className="relative h-[58vh] min-h-[400px] w-full cursor-grab active:cursor-grabbing sm:h-[64vh] lg:h-[94vh] lg:min-h-[660px]"
+              onDoubleClick={onEnter}
+              title="Double-cliquez pour ouvrir l'outil"
+            >
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(58% 52% at 50% 46%, rgba(97,184,255,0.16), transparent 68%)",
+                }}
+              />
+              <GlobeStudy
+                width={undefined}
+                height={undefined}
+                background="transparent"
+                /* Encre CHROME : argent froid, légèrement bleuté. */
+                baseColor="#dce4ef"
+                phrase="trouvezlescommercesabsentsduweb"
+                density={54}
+                glyphSize={92}
+                speed={100}
+                hover={100}
+                globe={{ drift: 210, radius: 118, letters: 100 }}
+                pointer={{ zoom: 100, light: 115, pins: 9 }}
+                style={{ minWidth: 0, minHeight: 0, width: "100%", height: "100%" }}
+              />
+              {/*
+               * Voile CHROME : bandes claires/sombres en mode `overlay`, masquées
+               * en cercle sur la sphère — c'est ce qui donne l'aspect métal poli
+               * au globe (l'encre du composant est monochrome, le reflet vient d'ici).
+               */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(148deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.05) 15%, rgba(4,8,14,0.78) 33%, rgba(255,255,255,0.48) 50%, rgba(4,8,14,0.66) 68%, rgba(255,255,255,0.26) 84%, rgba(4,8,14,0.35) 100%)",
+                  mixBlendMode: "overlay",
+                  WebkitMaskImage:
+                    "radial-gradient(circle at 50% 54%, #000 30%, rgba(0,0,0,0.5) 38%, transparent 45%)",
+                  maskImage:
+                    "radial-gradient(circle at 50% 54%, #000 30%, rgba(0,0,0,0.5) 38%, transparent 45%)",
+                }}
+              />
+              {/* Liseré chromé sur le limbe de la sphère. */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(circle at 50% 54%, transparent 32%, rgba(255,255,255,0.16) 40%, rgba(255,255,255,0.04) 43%, transparent 46%)",
+                  mixBlendMode: "screen",
+                }}
+              />
+              <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-slate-400">
+                faire glisser · molette pour zoomer · clic pour planter un repère · double-clic pour entrer
               </span>
             </div>
           </div>
