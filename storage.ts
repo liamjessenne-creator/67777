@@ -9,7 +9,8 @@ const KEYS = {
   // FIX (remplacement de Groq) : clé versionnée — les anciens réglages
   // persistés (modèle Groq, URL de passerelle Supabase, clé gsk_…) ne doivent
   // pas écraser les nouveaux défauts du serveur IA local.
-  aiSettings: "glf.aiSettings.v2",
+  // FIX (choix du fournisseur) : v3 — introduit `provider`.
+  aiSettings: "glf.aiSettings.v3",
   placesSettings: "glf.placesSettings",
   leads: "glf.leads",
   scans: "glf.scans",
@@ -46,6 +47,9 @@ export function loadAiSettings(): AiSettings {
     // (404 définitif). On n'hérite jamais d'un modèle hors catalogue.
     model: s.model || DEFAULT_AI_SETTINGS.model,
     baseUrl: s.baseUrl || DEFAULT_AI_SETTINGS.baseUrl,
+    // // FIX (choix du fournisseur) : valeur contrôlée — un réglage persisté
+    // corrompu ne peut pas casser la passerelle.
+    provider: s.provider === "local" ? "local" : "openrouter",
   };
 }
 

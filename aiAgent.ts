@@ -658,6 +658,9 @@ export class AIAgentService {
           messages,
           max_tokens: budget,
           jsonMode: opts.jsonMode === true,
+          // // FIX (choix du fournisseur) : chaque appel transporte le choix
+          // fait dans ⚙ Réglages — la passerelle choisit clé et URL en face.
+          provider: this.settings.provider,
         });
       }
 
@@ -779,6 +782,7 @@ export class AIAgentService {
             messages,
             max_tokens: opts.maxTokens,
             jsonMode: opts.jsonMode === true,
+            provider: this.settings.provider,
           },
           opts.onDelta,
         );

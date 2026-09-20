@@ -66,6 +66,18 @@ export const MODEL_POOL = [
 /** Modèle principal pour les rapports rédigés (qualité française mesurée). */
 export const MAIN_MODEL = "nex-agi/nex-n2.5-pro:free";
 
+/**
+ * Fournisseur IA choisi pour une requête :
+ *  - `openrouter` : hébergé (marche même PC éteint) — défaut ;
+ *  - `local` : serveur compatible OpenAI de la machine (routeur « auto », clé
+ *    dédiée). Uniquement joignable quand l'app tourne LÀ où tourne le serveur,
+ *    c'est-à-dire en local — en ligne, la passerelle renvoie une erreur claire.
+ */
+export type AiProvider = "openrouter" | "local";
+
+/** Fournisseur par défaut (hébergé) quand le client n'exprime pas de choix. */
+export const DEFAULT_PROVIDER: AiProvider = "openrouter";
+
 /** Message renvoyé par le routeur quand ses fournisseurs gratuits saturent. */
 export function looksLikeExhausted(detail: string): boolean {
   return /all models exhausted|no candidate model|rate limits to reset|service_unavailable/i.test(
@@ -89,6 +101,11 @@ export interface GatewayRequest {
   json_mode?: boolean;
   /** Demande un relais du flux SSE (affichage progressif). */
   stream?: boolean;
+  /**
+   * // FIX (choix du fournisseur) : fournisseur demandé pour CET appel.
+   * Absent = le choix par défaut de la passerelle (openrouter).
+   */
+  provider?: AiProvider;
 }
 
 /** Réponse non-flux de la passerelle. */

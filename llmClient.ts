@@ -85,6 +85,9 @@ function gatewayBody(req: ClientRequest & { stream?: boolean }): string {
     temperature: req.temperature,
     json_mode: req.jsonMode === true,
     stream: req.stream === true,
+    // // FIX (choix du fournisseur) : transmis tel quel — absent = défaut de
+    // la passerelle (openrouter). La passerelle choisit la clé et l'URL.
+    provider: req.provider,
   });
 }
 

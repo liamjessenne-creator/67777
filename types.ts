@@ -1,5 +1,7 @@
 /** Shared domain types for GeoLead Finder AI. */
 
+import type { AiProvider } from "./llmGateway";
+
 export type VenueType =
   | "restaurant"
   | "fast_food"
@@ -132,6 +134,12 @@ export interface AiSettings {
    * La clé du serveur IA ne transite jamais par le navigateur.
    */
   proxyUrl?: string;
+  /**
+   * // FIX (choix du fournisseur) : OpenRouter (hébergé, marche PC éteint) ou
+   * le serveur IA LOCAL de la machine (routeur « auto », clé dédiée — utilisable
+   * uniquement quand l'app tourne sur la même machine que le serveur).
+   */
+  provider: AiProvider;
 }
 
 /**
@@ -173,6 +181,9 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   model: "nex-agi/nex-n2.5-pro:free",
   // Passerelle d'analyse : vide = /api/llm (même origine, voir llmGateway.ts).
   proxyUrl: "",
+  // // FIX (choix du fournisseur) : OpenRouter par défaut (marche PC éteint) ;
+  // le serveur LOCAL se choisit dans ⚙ Réglages.
+  provider: "openrouter",
 };
 
 export interface ScanMeta {

@@ -19,6 +19,16 @@ const CORS_HEADERS = {
  *     saturés côté amont, 429 temporaires → rotation de modèle).
  */
 const DEFAULT_LLM_URL = "https://openrouter.ai/api/v1";
+/**
+ * // FIX (choix du fournisseur) : le client peut demander explicitement le
+ * fournisseur IA via `provider` : "openrouter" (hébergé, marche PC éteint) ou
+ * "local" (serveur OpenAI-compatible de la machine, URL LLM_LOCAL_URL avec sa
+ * clé LLM_LOCAL_API_KEY — utilisable uniquement quand la passerelle tourne
+ * là où le serveur tourne, c'est-à-dire en local).
+ */
+const PROVIDERS = new Set(["openrouter", "local"]);
+/** Serveur IA LOCAL de la machine (routeur « auto », clé dédiée). */
+const DEFAULT_LOCAL_URL = "http://127.0.0.1:31415/v1";
 const MODEL_POOL = [
   "nex-agi/nex-n2.5-mini:free",
   "nex-agi/nex-n2.5-pro:free",
@@ -33,6 +43,15 @@ const ROUNDS = ROUND_DELAYS_MS.length + 1;
 const MAX_TOKENS_CAP = 3_000;
 /** Le routeur LOCAL conserve « auto » (choix garanti chez lui). */
 const LOCAL_URL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/i;
+/**
+ * // FIX (choix du fournisseur) : en-têtes supplémentaires pour OpenRouter
+ * (traçabilité côté tableau de bord). Le serveur local les ignore.
+ */
+function headersFor(baseUrl) {
+  const h = { "Content-Type": "application/json" };
+  if (!LOCAL_URL.test(baseUrl)) h["X-Title"] = "GeoLead Finder";
+  return h;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -90,16 +109,15 @@ function classifyFailure(status, detail) {
 }
 
 async function callOnce(baseUrl, apiKey, model, body, budget, useResponseFormat) {
+  const extraHeaders = headersFor(baseUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(baseUrl + "/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        ...extraHeaders,
         Authorization: "Bearer " + apiKey,
-        // Recommandations OpenRouter (traçabilité côté tableau de bord).
-        "X-Title": "GeoLead Finder",
       },
       body: JSON.stringify({
         model,
@@ -131,20 +149,28 @@ async function callOnce(baseUrl, apiKey, model, body, budget, useResponseFormat)
     return { kind: "ok", content: String(content), model: data && data.model };
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "AbortError";
-    return {
-      kind: "retryable",
-      detail: timedOut ? "delai depasse " + Math.round(TIMEOUT_MS / 1000) + " s" : String(err && err.message ? err.message : err).slice(0, 200),
-    };
+    // // FIX (fournisseur local) : « fetch failed » / connexion refusée = le
+    // serveur est éteint → erreur DÉDIÉE (non générique) pour que l'app puisse
+    // dire « démarre ton serveur ou bascule sur OpenRouter ».
+    const detail = String(err && err.message ? err.message : err);
+    if (timedOut || /fetch failed|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ECONNRESET/i.test(detail)) {
+      return { kind: "unreachable", error: detail.slice(0, 200) };
+    }
+    return { kind: "retryable", error: detail.slice(0, 200) };
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function callLlm(baseUrl, apiKey, body) {
+async function callLlm(baseUrl, apiKey, body, provider) {
   const models = modelsFor(String(body.model || "").trim(), baseUrl);
+  // // FIX : le routeur LOCAL accepte response_format json_object ; les
+  // fournisseurs GRATUITS d'OpenRouter renvoient {} avec ce champ → on ne
+  // l'envoie qu'au serveur local. Ailleurs : consigne dans le prompt.
   const useResponseFormat = LOCAL_URL.test(baseUrl);
   let budget = Math.min(body.max_tokens || MAX_TOKENS_CAP, MAX_TOKENS_CAP);
   let lastError = "erreur inconnue";
+  let unreachable = false;
 
   for (let round = 0; round < ROUNDS; round++) {
     if (round > 0) {
@@ -170,13 +196,24 @@ async function callLlm(baseUrl, apiKey, body) {
         lastError = (result.kind === "empty" ? "reponse vide" : "JSON invalide") + " via " + model;
         console.warn("[llm] " + lastError + " - modele suivant");
       } else {
-        lastError = model + " : " + (result.detail || result.kind);
+        // // FIX (fournisseur local) : serveur éteint → inutile d'épuiser la
+        // chaîne de modèles ni d'attendre les délais entre manches : on sort
+        // immédiatement avec l'erreur dédiée.
+        if (result.kind === "unreachable") {
+          unreachable = true;
+          lastError = result.error || lastError;
+          break;
+        }
+        lastError = model + " : " + (result.detail || result.error || result.kind);
         console.warn("[llm] " + lastError + " - modele suivant");
       }
       if (i < models.length - 1) await sleep(MODEL_DELAY_MS);
     }
+    if (unreachable) break;
   }
-  return { ok: false, error: lastError };
+  return unreachable
+    ? { ok: false, kind: "unreachable", error: lastError }
+    : { ok: false, error: lastError };
 }
 
 function crossOriginBlocked(req) {
@@ -203,16 +240,6 @@ export default async function handler(req) {
     );
   }
 
-  const apiKey = process.env.LLM_API_KEY;
-  if (!apiKey) {
-    return failure(
-      "Service mal configuré : la clé LLM_API_KEY n'est pas définie dans les variables d'environnement.",
-      "vercel env add LLM_API_KEY production",
-      500,
-    );
-  }
-  const baseUrl = (process.env.LLM_BASE_URL || DEFAULT_LLM_URL).trim().replace(/\/+$/, "");
-
   let body = null;
   try {
     body = await req.json();
@@ -223,9 +250,57 @@ export default async function handler(req) {
     return failure("Requête invalide : aucun message fourni.", undefined, 400);
   }
 
-  const result = await callLlm(baseUrl, apiKey, body);
+  //
+  // // FIX (choix du fournisseur) : le client choisit le fournisseur IA.
+  //   - "local" : serveur OpenAI-compatible de la machine (routeur « auto »,
+  //     clé LLM_LOCAL_API_KEY). Uniquement joignable quand la passerelle tourne
+  //     sur la même machine que le serveur — en production Vercel, la connexion
+  //     est refusée et l'erreur l'explique clairement.
+  //   - "openrouter" (défaut) : hébergé, fonctionne même PC éteint.
+  //
+  const requestedProvider = String(body.provider || "").trim().toLowerCase();
+  // // FIX (fournisseur local) : détection correcte du fournisseur quand le
+  // client n'en demande aucun — on compare à la configuration réelle, pas à
+  // une variable qui n'existe pas encore à cet endroit du code.
+  const defaultBaseUrl = (process.env.LLM_BASE_URL || DEFAULT_LLM_URL).trim().replace(/\/+$/, "");
+  let baseUrl;
+  let apiKey;
+  let provider;
+  if (requestedProvider === "local" || (requestedProvider !== "openrouter" && LOCAL_URL.test(defaultBaseUrl))) {
+    provider = "local";
+    baseUrl = (process.env.LLM_LOCAL_URL || DEFAULT_LOCAL_URL).trim().replace(/\/+$/, "");
+    apiKey = (process.env.LLM_LOCAL_API_KEY || "").trim();
+    if (!apiKey) {
+      return failure(
+        "Fournisseur local indisponible : la clé LLM_LOCAL_API_KEY n'est pas définie côté serveur. Basculez sur OpenRouter dans les Réglages.",
+        "vercel env add LLM_LOCAL_API_KEY production",
+        500,
+      );
+    }
+  } else {
+    provider = "openrouter";
+    baseUrl = (process.env.LLM_BASE_URL || DEFAULT_LLM_URL).trim().replace(/\/+$/, "");
+    apiKey = process.env.LLM_API_KEY;
+    if (!apiKey) {
+      return failure(
+        "Service mal configuré : la clé LLM_API_KEY n'est pas définie dans les variables d'environnement.",
+        "vercel env add LLM_API_KEY production",
+        500,
+      );
+    }
+  }
+
+  const result = await callLlm(baseUrl, apiKey, body, provider);
   if (result.ok) {
-    return reply({ ok: true, content: result.content, model: result.model });
+    return reply({ ok: true, content: result.content, model: result.model, provider });
+  }
+  if (result.kind === "unreachable") {
+    return failure(
+      provider === "local"
+        ? "Le serveur IA local ne répond pas. Vérifie qu'il est démarré, ou bascule sur OpenRouter dans les Réglages."
+        : "Le fournisseur IA ne répond pas. Réessaie dans quelques secondes.",
+      result.error,
+    );
   }
   return failure("Oups, l'analyse a échoué. Réessaie dans quelques secondes. (" + result.error + ")", result.detail);
 }

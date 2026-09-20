@@ -1,9 +1,9 @@
 /** Settings modal — LLM API key, base URL, model selection + optional Google Places key. */
 
 import { useState } from "react";
-import { KeyRound, MapPinned, ShieldCheck } from "lucide-react";
+import { Cloud, KeyRound, MapPinned, MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { AIAgentService, AiAgentError } from "./aiAgent";
-import { LLM_GATEWAY_DEFAULT_URL } from "./llmGateway";
+import { LLM_GATEWAY_DEFAULT_URL, type AiProvider } from "./llmGateway";
 import type { AiSettings } from "./types";
 import { AI_MODELS } from "./types";
 import type { PlacesSettings } from "./places";
@@ -31,6 +31,8 @@ export function SettingsModal({
   // FIX (PROBLÈME 1) : URL de la fonction Edge Supabase (clé côté serveur).
   const [proxyUrl, setProxyUrl] = useState(aiSettings.proxyUrl ?? "");
   const [model, setModel] = useState<AiSettings["model"]>(aiSettings.model);
+  // // FIX (choix du fournisseur) : OpenRouter (hébergé) ou serveur LOCAL.
+  const [provider, setProvider] = useState<AiProvider>(aiSettings.provider ?? "openrouter");
   const [placesKey, setPlacesKey] = useState(placesSettings.apiKey);
   const [placesEnabled, setPlacesEnabled] = useState(placesSettings.enabled);
 
@@ -45,6 +47,7 @@ export function SettingsModal({
       baseUrl: baseUrl.trim(),
       model,
       proxyUrl: proxyUrl.trim(),
+      provider,
     };
     const nextPlaces: PlacesSettings = {
       apiKey: placesKey.trim(),
@@ -76,15 +79,61 @@ export function SettingsModal({
     <Modal open={open} onClose={onClose} title="Réglages">
       <div className="space-y-4">
         <section className="space-y-3">
-          {/* FIX (remplacement de Groq) : passerelle fournie par l'app. */}
+          {/*
+           * // FIX (choix du fournisseur) : onglets OpenRouter ↔ serveur LOCAL.
+           * Les deux passent par la même passerelle /api/llm — seule la clé et
+           * l'URL changent, et les deux restent côté serveur.
+           */}
           <section className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-3">
             <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck size={13} /> Passerelle d'analyse
+              <ShieldCheck size={13} /> Fournisseur d'analyse
             </h3>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-              Les analyses passent par la passerelle intégrée de l'application : la clé du
-              serveur IA reste côté serveur, jamais dans le navigateur. Laissez vide pour
-              utiliser la valeur par défaut.
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setProvider("openrouter")}
+                aria-pressed={provider === "openrouter"}
+                className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                  provider === "openrouter"
+                    ? "border-accent bg-accent/15 text-white"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:border-white/25"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 text-xs font-semibold">
+                  <Cloud size={13} /> OpenRouter
+                </span>
+                <span className="mt-1 block text-[11px] leading-snug text-slate-400">
+                  En ligne, marche même PC éteint
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProvider("local")}
+                aria-pressed={provider === "local"}
+                className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                  provider === "local"
+                    ? "border-accent bg-accent/15 text-white"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:border-white/25"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 text-xs font-semibold">
+                  <MonitorSmartphone size={13} /> Serveur local
+                </span>
+                <span className="mt-1 block text-[11px] leading-snug text-slate-400">
+                  Ta machine uniquement — démarre-le d'abord
+                </span>
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              {provider === "local" ? (
+                <>
+                  Les analyses passeront par le serveur compatible OpenAI de ta machine
+                  (routeur « auto »). Il doit être démarré : si l'app est en ligne ou le
+                  serveur éteint, l'analyse échouera — reviens alors sur OpenRouter.
+                </>
+              ) : (
+                <>Les analyses passeront par OpenRouter (pool gratuit avec rotation automatique). Fonctionne en local comme en ligne, même PC éteint.</>
+              )}
             </p>
             <div className="mt-2">
               <input
@@ -97,7 +146,7 @@ export function SettingsModal({
               />
             </div>
             <p className="mt-2 text-[11px] text-emerald-300">
-              Passerelle active — les analyses passent par le serveur.
+              Passerelle active — la clé du fournisseur reste côté serveur.
             </p>
           </section>
 
