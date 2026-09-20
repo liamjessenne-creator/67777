@@ -20,7 +20,7 @@ const FEATURES = [
   {
     icon: <Radar size={16} />,
     title: "Analyse de zone",
-    text: "Saisissez une ville ou un quartier : tous les restaurants, snacks, cafés, boulangeries et bars sont récupérés depuis OpenStreetMap, avec un plafond pour rester ciblé et rapide.",
+    text: "Saisissez une ville ou un quartier : tous les restaurants, snacks, cafés, boulangeries et bars sont récupérés depuis OpenStreetMap — des établissements réellement cartographiés, jamais inventés — avec un plafond pour rester ciblé et rapide.",
   },
   {
     icon: <Store size={16} />,

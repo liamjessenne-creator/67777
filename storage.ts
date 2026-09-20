@@ -6,7 +6,10 @@ import type { PlacesSettings } from "./places";
 import { DEFAULT_PLACES_SETTINGS } from "./places";
 
 const KEYS = {
-  aiSettings: "glf.aiSettings",
+  // FIX (remplacement de Groq) : clé versionnée — les anciens réglages
+  // persistés (modèle Groq, URL de passerelle Supabase, clé gsk_…) ne doivent
+  // pas écraser les nouveaux défauts du serveur IA local.
+  aiSettings: "glf.aiSettings.v2",
   placesSettings: "glf.placesSettings",
   leads: "glf.leads",
   scans: "glf.scans",
@@ -38,6 +41,10 @@ export function loadAiSettings(): AiSettings {
   return {
     ...DEFAULT_AI_SETTINGS,
     ...s,
+    // // FIX (remplacement de Groq) : le routeur « auto » est le seul choix
+    // garanti sur le nouveau serveur — un modèle Groq persisté serait rejeté
+    // (404 définitif). On n'hérite jamais d'un modèle hors catalogue.
+    model: s.model || DEFAULT_AI_SETTINGS.model,
     baseUrl: s.baseUrl || DEFAULT_AI_SETTINGS.baseUrl,
   };
 }
@@ -95,6 +102,12 @@ export interface ScanSummaryData {
   scannedAt?: string;
   /** // FIX (PROBLÈME 3) : durée réelle de l'analyse, en millisecondes. */
   durationMs?: number;
+  /**
+   * // FIX (fiabilité) : provenance de la liste affichée — `osm` (relevé
+   * OpenStreetMap) ou `ia` (reconstitution par le modèle quand tous les
+   * miroirs publics étaient injoignables). Affiché en clair dans le bandeau.
+   */
+  origin?: "osm" | "ia";
 }
 
 export function loadScanSummary(): ScanSummaryData | null {

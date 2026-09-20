@@ -55,7 +55,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
             et sont réutilisées conformément à la licence <em>Open Database License</em>
             (ODbL) : © contributeurs d'OpenStreetMap. Les résultats générés par
             l'intelligence artificielle sont produits par le modèle configuré par
-            l'utilisateur (Groq, DeepSeek ou tout endpoint compatible OpenAI) et
+            l'utilisateur (serveur d'analyse compatible OpenAI) et
             restent fournis « en l'état ».
           </p>
         </Section>
@@ -104,7 +104,7 @@ const PAGES: Record<LegalPage, { title: string; updated: string; body: ReactNode
               personnelle transmise).
             </li>
             <li>
-              <strong>Votre fournisseur d'IA</strong> (par ex. Groq) — les prompts
+              <strong>Votre serveur d'analyse IA</strong> — les prompts
               d'audit contiennent le nom, la catégorie et la situation de
               l'établissement analysé, mais <strong>jamais vos données personnelles</strong>.
               Ces requêtes sont couvertes par la politique de confidentialité du

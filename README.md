@@ -80,14 +80,29 @@ npm install
 npm run dev        # → http://localhost:5199
 ```
 
-The app ships **without a key** (never hard-coded). In production the key lives in the
-**Supabase secrets** and the browser only talks to the Edge Function:
+The app ships **without a key** (never hard-coded). In production the key lives in a
+server-side secret and the browser only talks to a gateway — either the bundled Vercel
+function `api/groq.ts` (no extra account needed) or the Supabase Edge Function:
 
 ```dotenv
+# Vercel gateway (recommended: nothing else to deploy)
+GROQ_API_KEY=gsk_…            # server-side only, never VITE_
+VITE_SUPABASE_FUNCTIONS_URL=/api/groq
+ALLOWED_ORIGIN=https://your-app.vercel.app   # blocks other sites from using your quota
+
+# — or — Supabase Edge Function
 VITE_SUPABASE_FUNCTIONS_URL=https://<project>.supabase.co/functions/v1/groq
 ```
 
-Deployment steps: [`supabase/README.md`](supabase/README.md). For local development
+Deployment steps for the Supabase variant: [`supabase/README.md`](supabase/README.md).
+
+**City scan, server side too.** `api/osm.ts` proxies the public Overpass mirrors from the
+server: it sends the `User-Agent` their usage policy requires (a browser cannot),
+interrogates every mirror in parallel, prunes unused tags (~2× lighter payload for
+mobile) and caches the result for 15 minutes. The client tries it automatically when the
+in-browser mirrors fail, so a single successful scan serves every visitor afterwards.
+
+For local development
 without a deployed function, a browser-side key still works but must be unlocked
 explicitly in `.env.local` (or `.env`) — this is the only case where a key touches the
 browser, so never set it in production:
@@ -102,10 +117,26 @@ You can also paste the gateway URL (or the dev key) once in ⚙ Settings inside 
 → the ranked prospect page opens automatically.
 
 **Vercel deploy** — `vercel.json` pins the Vite preset, `npm ci` install and `dist/`.
-Production needs the same variable set in the Vercel project (Settings → Environment
-Variables): `VITE_SUPABASE_FUNCTIONS_URL`. Without it, the city scan still works (public
-OpenStreetMap APIs, no key) but the per-business analysis reports that no gateway is
-configured — by design, the Groq key is never shipped to the browser.
+The two functions in `api/` (`groq.ts`, `osm.ts`) are deployed automatically alongside
+the static build. Required environment variables (Settings → Environment Variables, or
+`vercel env add`):
+
+| Variable | Scope | Role |
+|---|---|---|
+| `GROQ_API_KEY` | server | Groq key used by `api/groq.ts` — **never** prefixed with `VITE_` |
+| `VITE_SUPABASE_FUNCTIONS_URL` | build | set to `/api/groq` to route the app to the bundled gateway |
+| `ALLOWED_ORIGIN` | server | the site's own URL, so other sites cannot spend your Groq quota |
+
+Without them, the city scan still works (public OpenStreetMap APIs, no key) but the
+per-business analysis reports that no gateway is configured — by design, the Groq key is
+never shipped to the browser.
+
+**No fabricated leads.** The scan only ever lists establishments that exist in
+OpenStreetMap. When every mirror and the server gateway fail, the app says so and offers
+an **explicit** fallback: *Pistes par l'analyse*, which asks the model for candidate
+businesses. Those rows carry `origin: "ia"` and are labelled **non vérifiés** in the
+banner, because a language model can name places that do not exist — a fake prospect
+list is worse than a clear error.
 
 ```bash
 npx vercel --prod      # deploy the current folder

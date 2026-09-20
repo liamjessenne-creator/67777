@@ -12,7 +12,16 @@ export type LeadStatus = "new" | "analyzed" | "contacted";
 
 export type PriorityTier = "high" | "medium" | "low";
 
-/** Venue as extracted from OpenStreetMap / Overpass. */
+/**
+ * Provenance d'une fiche commerce :
+ *  - `osm` : relevé OpenStreetMap (source cartographique, terrain) ;
+ *  - `ia`  : reconstitution par le modèle quand aucun miroir OSM ne répond.
+ * Les fiches `ia` sont signalées comme ESTIMÉES dans l'interface : ce n'est
+ * pas un relevé terrain, il faut vérifier avant de démarcher.
+ */
+export type VenueOrigin = "osm" | "ia";
+
+/** Venue as extracted from OpenStreetMap / Overpass (or estimated by the model). */
 export interface Venue {
   /** Stable id: node/123456 or way/123456 */
   id: string;
@@ -29,6 +38,8 @@ export interface Venue {
   openingHours: string | null;
   /** OSM opening-hours heuristic — "no hours recorded" is treated as unknown, not closed */
   openHoursRecorded: boolean;
+  /** Source de la fiche (voir VenueOrigin). Absent = `osm` (anciens caches). */
+  origin?: VenueOrigin;
   rawTags: Record<string, string>;
 }
 
@@ -116,27 +127,24 @@ export interface AiSettings {
   baseUrl: string;
   model: AiModelId;
   /**
-   * FIX (PROBLÈME 1) : URL de la fonction Edge Supabase qui relaie les appels
-   * Groq. Quand elle est renseignée, la clé côté navigateur n'est plus utilisée :
-   * elle reste dans les secrets Supabase.
+   * // FIX (remplacement de Groq) : URL de la passerelle d'analyse. Défaut
+   * `/api/llm` — proxy Vite en local, fonction serverless Vercel en production.
+   * La clé du serveur IA ne transite jamais par le navigateur.
    */
   proxyUrl?: string;
 }
 
 /**
- * Modèles proposés (Groq en priorité).
- * `llama-3.3-70b-versatile` est le modèle PRINCIPAL demandé : la fonction Edge
- * bascule automatiquement sur un repli si un identifiant n'est plus exposé par
- * le catalogue du compte (un 404 ne doit jamais casser une analyse en cours).
+ * // FIX (IA en ligne) : modèles proposés — le pool gratuit OpenRouter (mesuré
+ * en direct) + le routeur « auto » du serveur local. L'utilisateur peut aussi
+ * saisir n'importe quel autre identifiant compatible OpenAI.
  */
 export const AI_MODELS = [
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-  "openai/gpt-oss-120b",
-  "openai/gpt-oss-20b",
-  "qwen/qwen3.8-27b",
-  "groq/compound-mini",
-  "groq/compound",
+  "nex-agi/nex-n2.5-pro:free",
+  "nex-agi/nex-n2.5-mini:free",
+  "z-ai/glm-5.2:free",
+  "google/gemma-4-31b-it:free",
+  "auto",
 ] as const;
 
 /** Preset IDs or any custom model id typed by the user (other providers). */
@@ -154,17 +162,17 @@ export type LegalPage = "mentions" | "privacy" | "terms";
  * localStorage); a fresh clone just pastes its key once in Settings.
  */
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  // // FIX (CONTRAINTE) : la clé ne doit JAMAIS être en dur. Elle est lue dans
-  // l'environnement au build (`GROQ_API_KEY`), avec le préfixe `VITE_` requis
-  // par Vite pour exposer une variable au client, ou saisie une fois dans
-  // ⚙ Réglages (stockée uniquement dans le localStorage du navigateur).
-  apiKey: import.meta.env?.VITE_GROQ_API_KEY ?? import.meta.env?.GROQ_API_KEY ?? "",
-  baseUrl: "https://api.groq.com/openai/v1",
-  // Modèle principal par défaut (rapide et capable pour les rapports rédigés).
-  model: "llama-3.3-70b-versatile",
-  // Passerelle serveur : renseignée au build (VITE_SUPABASE_FUNCTIONS_URL) ou
-  // saisie une fois dans les réglages. C'est le chemin recommandé en production.
-  proxyUrl: import.meta.env?.VITE_SUPABASE_FUNCTIONS_URL ?? "",
+  // // FIX (IA en ligne) : la clé vit côté serveur (`.env.local` → proxy Vite
+  // /api/llm ; LLM_API_KEY Vercel → api/llm.js). Le champ ci-dessous n'est pas
+  // utilisé par le chemin normal.
+  apiKey: "",
+  // URL directe du fournisseur (OpenRouter hébergé par défaut, serveur local
+  // possible). Le chemin NORMAL passe par la passerelle (`proxyUrl`).
+  baseUrl: "https://openrouter.ai/api/v1",
+  // Modèle principal : rapports rédigés (qualité française mesurée).
+  model: "nex-agi/nex-n2.5-pro:free",
+  // Passerelle d'analyse : vide = /api/llm (même origine, voir llmGateway.ts).
+  proxyUrl: "",
 };
 
 export interface ScanMeta {

@@ -35,7 +35,7 @@ import { exportLeads } from "./export";
 import { lookupPlace } from "./places";
 import { navigateTo, useRouter } from "./router";
 // FIX (PROBLÈME 1) : la passerelle Edge remplace la clé côté navigateur.
-import { DIRECT_AI_KEY_ALLOWED, isProxyConfigured } from "./aiProxy";
+import { isGatewayConfigured } from "./llmClient";
 // FIX (PROBLÈMES 1, 2 & 3) : logs, messages d'erreur FR et parallélisme borné.
 import { describeError, logError, logInfo, mapLimit } from "./net";
 import {
@@ -57,6 +57,8 @@ import type {
   DigitalFilters,
   Lead,
   ScanMeta,
+  Venue,
+  VenueOrigin,
   VenueTypeFilter,
 } from "./types";
 import type { ScanSummaryData } from "./storage";
@@ -131,6 +133,14 @@ export default function App() {
   const [scanElapsedMs, setScanElapsedMs] = useState(0);
   /** // FIX (PROBLÈME 2) : vrai quand on affiche le dernier scan réussi (cache). */
   const [usingCache, setUsingCache] = useState(false);
+  /**
+   * // FIX (honnêteté + fiabilité) : vrai quand OpenStreetMap n'a pas répondu et
+   * qu'on PEUT proposer des pistes reconstituées par l'analyse. Le repli reste
+   * un choix de l'utilisateur : un modèle peut citer des établissements qui
+   * n'existent pas, on ne présente donc jamais ces pistes comme des commerces
+   * relevés.
+   */
+  const [aiFallbackOffered, setAiFallbackOffered] = useState(false);
   /** Copie de secours des résultats précédents (repli si le réseau lâche). */
   const leadsRef = useRef<Lead[]>(leads);
   leadsRef.current = leads;
@@ -154,14 +164,13 @@ export default function App() {
   const stats = useMemo(() => computeStats(leads), [leads]);
 
   /**
-   * FIX (PROBLÈME 1) : l'analyse est disponible dès qu'une passerelle Edge est
-   * configurée (chemin recommandé). La clé locale ne sert qu'au développement.
+   * // FIX (remplacement de Groq) : l'analyse est TOUJOURS disponible — la
+   * passerelle `/api/llm` est fournie par l'app elle-même (proxy Vite en
+   * local, fonction serverless en production).
    */
   const aiConfigured = useMemo(
-    () =>
-      isProxyConfigured(aiSettings.proxyUrl) ||
-      (DIRECT_AI_KEY_ALLOWED && Boolean(aiSettings.apiKey)),
-    [aiSettings.proxyUrl, aiSettings.apiKey],
+    () => isGatewayConfigured(aiSettings.proxyUrl),
+    [aiSettings.proxyUrl],
   );
 
   const filteredLeads = useMemo(() => {
@@ -202,7 +211,7 @@ export default function App() {
   // sur Entrée dans le champ ville lance ainsi l'analyse tout de suite, sans
   // dépendre d'un état React pas encore appliqué (l'ancien bouton restait
   // inactif après un rechargement, alors que des résultats étaient affichés).
-  const analyzeArea = useCallback(async (placeArg?: GeoPlace) => {
+  const analyzeArea = useCallback(async (placeArg?: GeoPlace, opts: { allowAi?: boolean } = {}) => {
     const place = placeArg ?? selectedPlace;
     if (!place) return;
     // // FIX (PROBLÈME 2) : on mémorise le dernier scan réussi AVANT de toucher
@@ -212,29 +221,82 @@ export default function App() {
     setScanning(true);
     setScanError(null);
     setUsingCache(false);
-    setScanStep("Recherche des commerces sur OpenStreetMap…");
+    setAiFallbackOffered(false);
+    setScanStep("Recherche des commerces…");
     try {
-      const { venues: allVenues, endpointUsed, durationMs } = await queryVenues(place, {
-        // // FIX (PROBLÈME 2) : l'utilisateur voit QUEL miroir est interrogé et
-        // combien de temps cela prend — plus jamais d'attente muette.
-        // // FIX (fiabilité) : on annonce aussi la FORME de recherche quand le
-        // lieu en autorise deux (« emprise » = rectangle, bien plus rapide que
-        // la frontière exacte) — l'utilisateur voit où en est le repli.
-        onProgress: ({ host, attempt, total, shape }) =>
-          setScanStep(
-            `Recherche des commerces sur OpenStreetMap… (miroir ${attempt}/${total} : ${host}` +
-              `${shape === "emprise" ? ", recherche par emprise" : ""})`,
-          ),
-      });
-      logInfo("scan", `${allVenues.length} commerces via ${endpointUsed} en ${durationMs} ms`, {
-        ville: place.displayName,
-      });
+      /**
+       * // FIX (fiabilité — « Overpass ne marche pas à chaque fois ») : trois
+       * tentatives successives, de la plus fidèle à la plus dégradée.
+       *   1. miroirs publics interrogés en direct depuis le navigateur ;
+       *   2. passerelle serveur `/api/osm` (mise en cache, User-Agent correct) ;
+       *   3. sur demande EXPLICITE de l'utilisateur : pistes reconstituées par
+       *      le modèle Groq (`origin: "ia"`), signalées comme non vérifiées.
+       * L'étape 3 n'est JAMAIS automatique : un modèle peut citer des
+       * établissements qui n'existent pas, et une liste de faux prospects est
+       * plus dangereuse qu'une erreur claire.
+       */
+      let allVenues: Venue[] = [];
+      let endpointUsed = "";
+      let durationMs = 0;
+      let scanOrigin: VenueOrigin = "osm";
+
+      try {
+        const res = await queryVenues(place, {
+          // // FIX (PROBLÈME 2) : l'utilisateur voit QUELS miroirs sont
+          // interrogés et combien de temps cela prend — plus d'attente muette.
+          onProgress: ({ host, attempt, total, shape }) =>
+            setScanStep(
+              `Recherche des commerces… (${host} — manche ${attempt}/${total}` +
+                `${shape ? `, ${shape}` : ""})`,
+            ),
+        });
+        allVenues = res.venues;
+        endpointUsed = res.endpointUsed;
+        durationMs = res.durationMs;
+        logInfo("scan", `${allVenues.length} commerces via ${endpointUsed} en ${durationMs} ms`, {
+          ville: place.displayName,
+        });
+        // Zone réellement vide (JSON valide, aucun commerce cartographié).
+        if (allVenues.length === 0) {
+          throw new Error(
+            `Aucun commerce cartographié à « ${place.shortName} ». Essayez une zone plus large ou un autre quartier.`,
+          );
+        }
+      } catch (osmError) {
+        // Annulation volontaire : on ne bascule pas sur l'analyse.
+        if ((osmError as { name?: string })?.name === "AbortError") throw osmError;
+        logError("scan", osmError, {
+          ville: place.displayName,
+          etape: "OpenStreetMap",
+          modeleRepli: opts.allowAi ? "accepte" : "propose-a-l-utilisateur",
+        });
+        if (!opts.allowAi) {
+          // On s'arrête là et on PROPOSE le repli : rien n'est inventé sans accord.
+          setAiFallbackOffered(aiConfigured);
+          throw osmError;
+        }
+        if (!aiConfigured) {
+          throw new Error(
+            `${describeError(osmError)} Aucune passerelle d'analyse n'est configurée pour reconstituer des pistes : ouvrez ⚙ Réglages.`,
+          );
+        }
+        const agent = new AIAgentService(aiSettings);
+        setScanStep("Serveurs cartographiques injoignables — reconstitution de pistes par l'analyse…");
+        allVenues = await agent.discoverVenues(place, (message) => setScanStep(message));
+        scanOrigin = "ia";
+        endpointUsed = "analyse (serveur IA)";
+        durationMs = Date.now() - startedAt;
+        logInfo("scan", `${allVenues.length} pistes reconstituées par l'analyse`, {
+          ville: place.displayName,
+          raisonOsm: describeError(osmError),
+        });
+      }
 
       // Don't dump the whole metropolitan area: cap the scan so results stay
       // targeted. Refining the query (e.g. "Lyon 4e") narrows the area.
       const SCAN_CAP = 700;
-      const venues = allVenues.slice(0, SCAN_CAP);
       const capped = allVenues.length > SCAN_CAP;
+      const venues = allVenues.slice(0, SCAN_CAP);
       if (venues.length === 0) {
         throw new Error(
           `Aucun commerce trouvé à « ${place.shortName} ». Essayez une zone plus large ou un autre quartier.`,
@@ -332,6 +394,7 @@ export default function App() {
         capped,
         scannedAt: new Date().toISOString(),
         durationMs: totalMs,
+        origin: scanOrigin,
       });
       logInfo("scan", `analyse terminée en ${totalMs} ms`, {
         commerces: venues.length,
@@ -355,7 +418,7 @@ export default function App() {
     } finally {
       setScanning(false);
     }
-  }, [selectedPlace, placesSettings]);
+  }, [selectedPlace, placesSettings, aiConfigured, aiSettings]);
 
   // ---- AI audit flow ----
   const runAudit = useCallback(
@@ -682,6 +745,22 @@ export default function App() {
               <RotateCcw size={11} /> Réessayer
             </Button>
           ) : null}
+          {/*
+           * // FIX (honnêteté) : le repli par l'analyse n'est proposé que si la
+           * cartographie a échoué, et il faut l'ACCEPTER — ces pistes sont
+           * générées par le modèle, elles ne remplacent pas un relevé.
+           */}
+          {scanError && aiFallbackOffered && !scanning ? (
+            <Button
+              size="sm"
+              variant="danger"
+              className={scanError ? "shrink-0" : "ml-auto shrink-0"}
+              onClick={() => void analyzeArea(undefined, { allowAi: true })}
+              title="Pistes reconstituées par l'analyse : noms et adresses non vérifiés"
+            >
+              <Radar size={11} /> Pistes par l'analyse
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -716,6 +795,18 @@ export default function App() {
                       analysés · <span className="font-semibold text-red-300">{scanSummary.high} cibles prioritaires</span>
                       {scanSummary.capped ? " · analyse plafonnée (affinez sur un quartier)" : ""} — classés par
                       présence numérique la plus faible
+                      {/* // FIX (honnêteté) : quand OpenStreetMap n'a pas répondu,
+                          on le DIT au lieu de faire passer une estimation pour
+                          un relevé terrain. */}
+                      {scanSummary.origin === "ia" ? (
+                        <>
+                          {" "}
+                          <span className="text-red-300">
+                            · OpenStreetMap indisponible : pistes reconstituées par l'analyse, noms et
+                            adresses NON vérifiés — à confirmer avant tout démarchage
+                          </span>
+                        </>
+                      ) : null}
                     </>
                   ) : (
                     "Lancez une analyse pour afficher les prospects classés ici"

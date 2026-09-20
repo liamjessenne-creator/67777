@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { KeyRound, MapPinned, ShieldCheck } from "lucide-react";
 import { AIAgentService, AiAgentError } from "./aiAgent";
-import { DIRECT_AI_KEY_ALLOWED, isProxyConfigured } from "./aiProxy";
+import { LLM_GATEWAY_DEFAULT_URL } from "./llmGateway";
 import type { AiSettings } from "./types";
 import { AI_MODELS } from "./types";
 import type { PlacesSettings } from "./places";
@@ -53,16 +53,8 @@ export function SettingsModal({
     onSaveAi(nextAi);
     onSavePlaces(nextPlaces);
 
-    // // FIX (POINT 1) : sans passerelle Edge, une analyse n'est possible qu'en
-    // développement ET avec l'autorisation explicite de la clé locale.
-    if (!isProxyConfigured(nextAi.proxyUrl) && !(DIRECT_AI_KEY_ALLOWED && nextAi.apiKey)) {
-      setTestResult({
-        ok: false,
-        msg: "Renseignez l'URL de la fonction Edge Supabase (recommandé) : c'est elle qui détient la clé, jamais le navigateur.",
-      });
-      setTesting(false);
-      return;
-    }
+    // // FIX (remplacement de Groq) : la passerelle est toujours fournie par
+    // l'app (/api/llm) — plus de configuration préalable à exiger ici.
     try {
       const agent = new AIAgentService(nextAi);
       const reply = await agent.testConnection();
@@ -84,51 +76,43 @@ export function SettingsModal({
     <Modal open={open} onClose={onClose} title="Réglages">
       <div className="space-y-4">
         <section className="space-y-3">
-          {/* FIX (PROBLÈME 1) : passerelle serveur = chemin recommandé. */}
+          {/* FIX (remplacement de Groq) : passerelle fournie par l'app. */}
           <section className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-3">
             <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              <ShieldCheck size={13} /> Passerelle d'analyse (recommandé)
+              <ShieldCheck size={13} /> Passerelle d'analyse
             </h3>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-              URL de la fonction Edge Supabase. Elle seule détient la clé Groq : aucune clé ne
-              circule dans le navigateur. Déploiement décrit dans <code>supabase/README.md</code>.
+              Les analyses passent par la passerelle intégrée de l'application : la clé du
+              serveur IA reste côté serveur, jamais dans le navigateur. Laissez vide pour
+              utiliser la valeur par défaut.
             </p>
             <div className="mt-2">
               <input
-                type="url"
+                type="text"
                 value={proxyUrl}
                 onChange={(e) => setProxyUrl(e.target.value)}
-                placeholder="https://<projet>.supabase.co/functions/v1/groq"
+                placeholder={`${LLM_GATEWAY_DEFAULT_URL} (défaut)`}
                 className={inputClass}
                 spellCheck={false}
               />
             </div>
-            {isProxyConfigured(proxyUrl) ? (
-              <p className="mt-2 text-[11px] text-emerald-300">
-                Passerelle configurée — les analyses passent par le serveur.
-              </p>
-            ) : (
-              <p className="mt-2 text-[11px] text-amber-300">
-                Aucune passerelle configurée : les analyses sont indisponibles.
-                {DIRECT_AI_KEY_ALLOWED
-                  ? " La clé du navigateur est utilisée car le mode développement est explicitement autorisé."
-                  : " Déployez la fonction Edge (supabase/README.md) pour activer l'analyse."}
-              </p>
-            )}
+            <p className="mt-2 text-[11px] text-emerald-300">
+              Passerelle active — les analyses passent par le serveur.
+            </p>
           </section>
 
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <KeyRound size={13} className="text-accent" /> Fournisseur du modèle (compatible OpenAI)
           </h3>
           <Field
-            label="Clé API — mode développement uniquement"
-            hint="À laisser vide en production : utilisez la passerelle ci-dessus pour que la clé reste côté serveur."
+            label="Clé API (optionnelle — appel direct hors passerelle)"
+            hint="Laissez vide : la passerelle ci-dessus détient la clé côté serveur."
           >
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="gsk_..."
+              placeholder="facultatif"
               className={inputClass}
               autoComplete="off"
               spellCheck={false}
@@ -146,7 +130,7 @@ export function SettingsModal({
           </Field>
           <Field
             label="Identifiant du modèle"
-            hint="Modèles proposés vérifiés sur Groq. Vous pouvez saisir n'importe quel identifiant pour un autre fournisseur compatible OpenAI."
+            hint="« auto » laisse le serveur choisir. Vous pouvez saisir n'importe quel identifiant du catalogue du serveur (voir /v1/models)."
           >
             <input
               type="text"
@@ -210,8 +194,8 @@ export function SettingsModal({
             texte se réduisait à une colonne de 2 mots sous les boutons. */}
         <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <span className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
-            <ShieldCheck size={12} className="mt-0.5 shrink-0" /> Les clés ne quittent jamais votre
-            navigateur, sauf pour appeler directement les API concernées.
+            <ShieldCheck size={12} className="mt-0.5 shrink-0" /> La clé du serveur IA reste côté
+            serveur : le navigateur ne l'expose jamais.
           </span>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onClose}>Fermer</Button>

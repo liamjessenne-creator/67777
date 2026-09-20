@@ -3,19 +3,27 @@
  * endpoint (Groq by default, also DeepSeek/Qwen OpenAI-mode endpoints).
  */
 
-import type { AiAudit, AiSettings, Lead, SiteAudit, SiteChecks, SiteVerdict } from "./types";
+import type {
+  AiAudit,
+  AiSettings,
+  Lead,
+  SiteAudit,
+  SiteChecks,
+  SiteVerdict,
+  Venue,
+  VenueType,
+} from "./types";
 // FIX (PROBLÈME 1) : infrastructure réseau commune — timeout explicite, retry
 // exponentiel, erreurs en français et journalisation console de l'erreur exacte.
 import { NetworkError, describeError, fetchWithRetry, fetchWithTimeout, logError, logInfo } from "./net";
-// FIX (PROBLÈME 1) : passerelle serveur — la clé Groq reste dans les secrets
-// Supabase et ne transite JAMAIS par le navigateur.
+// FIX (remplacement de Groq) : passerelle serveur unique — la clé du serveur IA
+// ne transite JAMAIS par le navigateur.
 import {
-  AI_PROXY_DEFAULT_URL,
-  AiProxyError,
-  DIRECT_AI_KEY_ALLOWED,
-  callAiProxy,
-  callAiProxyStream,
-} from "./aiProxy";
+  LlmGatewayError,
+  callGateway,
+  callGatewayStream,
+} from "./llmClient";
+import { AUTO_MODEL, JSON_MODEL, LLM_GATEWAY_DEFAULT_URL, MAIN_MODEL } from "./llmGateway";
 
 export class AiAgentError extends Error {
   constructor(
@@ -45,12 +53,10 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  * rapports rédigés). La fonction Edge bascule AUTOMATIQUEMENT sur un modèle de
  * repli si un identifiant n'est plus exposé par Groq — l'analyse ne casse pas.
  */
-export const RECOMMENDED_MODEL = "llama-3.3-70b-versatile";
-/**
- * // FIX (PROBLÈME 3) : modèle RAPIDE pour les étapes simples (découverte de
- * site, plan d'action JSON) — réponse nettement plus rapide.
- */
-const FAST_MODEL_ID = "llama-3.1-8b-instant";
+// FIX (IA en ligne) : modèle principal = rapports rédigés (qualité française
+// mesurée sur OpenRouter). Le serveur bascule automatiquement sur le pool si
+// ce modèle est saturé (429) — voir api/llm.js.
+export const RECOMMENDED_MODEL = MAIN_MODEL;
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -352,6 +358,116 @@ interface ChatOptions {
   reasoningEffort?: "low" | "medium" | "high";
 }
 
+/**
+ * Cible d'une reconstitution de liste par le modèle (voir
+ * `AIAgentService.discoverVenues`).
+ */
+export interface VenueDiscoveryTarget {
+  displayName: string;
+  shortName: string;
+  lat: number;
+  lon: number;
+}
+
+/** Fiche brute renvoyée par le modèle avant validation. */
+interface RawAiVenue {
+  nom?: unknown;
+  type?: unknown;
+  adresse?: unknown;
+  telephone?: unknown;
+  site_web?: unknown;
+}
+
+/**
+ * Convertit (et VALIDE) la liste brute du modèle en fiches commerce.
+ * Fonction pure, exportée pour les tests : aucune donnée incertaine n'est
+ * inventée (nom vide, téléphone approximatif ou URL fantaisiste sont écartés),
+ * les doublons de nom sont supprimés et chaque fiche porte `origin: "ia"`.
+ */
+export function mapAiVenues(
+  list: unknown,
+  target: VenueDiscoveryTarget,
+): Venue[] {
+  const rows = Array.isArray(list) ? (list as RawAiVenue[]) : [];
+  const venues: Venue[] = [];
+  const seen = new Set<string>();
+  const zone = target.displayName || target.shortName;
+
+  rows.forEach((item, index) => {
+    const name = aiText(item?.nom, 90);
+    if (!name) return;
+    const key = normalizeName(name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+
+    // Coordonnées : le modèle ne fournit pas de position fiable. On répartit les
+    // fiches autour du centre de la zone (spirale déterministe, angle d'or) pour
+    // qu'elles ne se superposent pas, sans prétendre à une localisation exacte.
+    const angle = index * 2.399963229728653; // ~137,5°
+    const radius = 0.0045 * Math.sqrt(index + 1);
+    const lat = target.lat + radius * Math.sin(angle);
+    const lon =
+      target.lon +
+      (radius * Math.cos(angle)) / Math.max(0.2, Math.cos((target.lat * Math.PI) / 180));
+
+    venues.push({
+      id: `ia/${index + 1}-${key}`,
+      osmType: "node",
+      // Identifiant NÉGATIF : impossible à confondre avec un id OSM réel.
+      osmId: -(index + 1),
+      name,
+      venueType: aiVenueType(item?.type),
+      lat,
+      lon,
+      address: aiText(item?.adresse, 140) ?? "—",
+      phone: aiText(item?.telephone, 30),
+      website: aiUrl(item?.site_web),
+      cuisine: null,
+      openingHours: null,
+      openHoursRecorded: false,
+      origin: "ia",
+      rawTags: { source: "analyse-ia", zone },
+    });
+  });
+
+  return venues;
+}
+
+/** Ramène un libellé libre du modèle à une catégorie connue de l'app. */
+function aiVenueType(value: unknown): VenueType {
+  const t = String(value ?? "").toLowerCase();
+  if (t.includes("boulanger") || t.includes("bakery") || t.includes("patiss") || t.includes("pâtiss"))
+    return "bakery";
+  if (t.includes("fast") || t.includes("rapide") || t.includes("kebab") || t.includes("pizza") || t.includes("burger") || t.includes("sandwich") || t.includes("snack"))
+    return "fast_food";
+  if (t.includes("caf") || t.includes("coffee")) return "cafe";
+  if (t.includes("pub")) return "pub";
+  if (t.includes("bar") || t.includes("brasserie")) return "bar";
+  return "restaurant";
+}
+
+/** Nettoie une valeur textuelle du modèle (« inconnu », « N/A »… → null). */
+function aiText(value: unknown, max = 160): string | null {
+  const s = String(value ?? "").trim();
+  if (!s || s.length > max) return null;
+  if (/^(inconnu|non|n\/a|na|aucun|aucune|—|-|null|none)$/i.test(s)) return null;
+  return s;
+}
+
+/** N'accepte qu'une URL http(s) réellement exploitable. */
+function aiUrl(value: unknown): string | null {
+  const s = aiText(value, 300);
+  if (!s) return null;
+  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, "")}`;
+  try {
+    const url = new URL(withScheme);
+    if (!url.hostname.includes(".")) return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
 /** Vrai pour les modèles qui raisonnent avant de répondre (gpt-oss, compound). */
 export function isReasoningModel(model: string): boolean {
   return /gpt-oss|compound/i.test(model);
@@ -365,11 +481,15 @@ export class AIAgentService {
   }
 
   /**
-   * // FIX (PROBLÈME 3) : sur Groq, les étapes simples (JSON courts, découverte
-   * de site) utilisent un modèle plus rapide que le modèle principal.
+   * // FIX (remplacement de Groq) : pour les étapes simples (JSON courts,
+   * découverte de site), on utilise le modèle dont le comportement JSON est
+   * PROUVÉ sur le nouveau serveur (mesuré : JSON pur en 3 s, 16 jetons), au
+   * lieu du routeur « auto » qui tire parfois un modèle raisonneur qui brûle
+   * le budget en bavardage. La passerelle bascule sur « auto » si ce modèle
+   * est indisponible (voir callLlm côté serveur).
    */
   private get fastModel(): string {
-    return this.baseUrl.includes("groq") ? FAST_MODEL_ID : this.settings.model;
+    return JSON_MODEL;
   }
 
   private headers(): Record<string, string> {
@@ -380,12 +500,12 @@ export class AIAgentService {
   }
 
   /**
-   * URL de la fonction Edge Supabase, si elle est configurée (champ Réglages
-   * ou variable d'environnement VITE_SUPABASE_FUNCTIONS_URL).
+   * // FIX (remplacement de Groq) : URL de la passerelle serveur. Toujours
+   * disponible en local (proxy Vite /api/llm) comme en production (Vercel).
    */
   private get proxyUrl(): string | null {
     const fromSettings = (this.settings.proxyUrl ?? "").trim();
-    const url = (fromSettings || AI_PROXY_DEFAULT_URL).replace(/\/+$/, "");
+    const url = (fromSettings || LLM_GATEWAY_DEFAULT_URL).replace(/\/+$/, "");
     return url ? url : null;
   }
 
@@ -394,7 +514,9 @@ export class AIAgentService {
    * normal) ou, en développement uniquement, clé locale explicitement autorisée.
    */
   get isConfigured(): boolean {
-    return Boolean(this.proxyUrl || (DIRECT_AI_KEY_ALLOWED && this.settings.apiKey));
+    // FIX (remplacement de Groq) : la passerelle est TOUJOURS disponible —
+    // proxy Vite en local, fonction serverless en production.
+    return true;
   }
 
   private buildBody(
@@ -428,22 +550,13 @@ export class AIAgentService {
   }
 
   /**
-   * Modèles de repli utilisés quand un identifiant n'est plus exposé par
-   * l'API (réponse 404 « model not found »). En mode passerelle, la fonction
-   * Edge gère déjà ces replis ; cette chaîne sert au mode développement direct.
+   * // FIX (IA en ligne) : repli unique et garanti — la passerelle serveur
+   * gère déjà la rotation du pool gratuit (voir api/llm.js) ; en direct, on
+   * retombe sur le routeur « auto » du serveur local.
    */
-  private static readonly MODEL_CHAIN = [
-    "llama-3.3-70b-versatile",
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
-  ];
-  /** Même principe pour les étapes simples : petit modèle rapide en premier. */
-  private static readonly MODEL_CHAIN_FAST = [
-    "llama-3.1-8b-instant",
-    "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
-    "openai/gpt-oss-120b",
-  ];
+  private static readonly MODEL_CHAIN = [AUTO_MODEL];
+  /** Même principe pour les étapes simples. */
+  private static readonly MODEL_CHAIN_FAST = [AUTO_MODEL];
   /** Modèle réellement utilisé pour un modèle demandé (évite les 404 répétés). */
   private static readonly resolvedModels = new Map<string, string>();
   /**
@@ -455,8 +568,11 @@ export class AIAgentService {
   private static readonly deadModels = new Set<string>();
 
   private modelsToTry(requested: string): string[] {
-    // Passerelle : la fonction Edge essaie déjà les replis (et les mémorise).
-    if (this.proxyUrl) return [requested];
+    // Passerelle : le serveur essaie déjà « auto » en repli (voir api/llm.js).
+    // En direct, on ajoute le routeur derrière le modèle demandé.
+    if (this.proxyUrl) return [requested, AUTO_MODEL].filter(
+      (m, i, all) => m && all.indexOf(m) === i && !AIAgentService.deadModels.has(m),
+    );
     const memo = AIAgentService.resolvedModels.get(requested);
     const chain = /(8b|instant|mini|20b)/i.test(requested)
       ? AIAgentService.MODEL_CHAIN_FAST
@@ -537,26 +653,27 @@ export class AIAgentService {
        */
       const proxy = this.proxyUrl;
       if (proxy) {
-        return await callAiProxy(proxy, {
+        return await callGateway(proxy, {
           model,
           messages,
-          maxTokens: budget,
+          max_tokens: budget,
           jsonMode: opts.jsonMode === true,
-          reasoningEffort: opts.reasoningEffort ?? (opts.jsonMode ? "low" : "medium"),
         });
       }
 
       // Mode dégradé (développement uniquement, sans fonction Edge déployée) :
       // la clé est alors dans le navigateur — jamais en production, et il faut
       // l'autoriser explicitement (VITE_ALLOW_DIRECT_AI_KEY=true).
-      if (!DIRECT_AI_KEY_ALLOWED || !this.settings.apiKey) {
+      // FIX (remplacement de Groq) : le mode « clé directe dans le navigateur »
+      // n'existe plus — la passerelle serveur est le seul chemin.
+      if (true || !this.settings.apiKey) {
         throw new AiAgentError(
-          "Oups, l'analyse n'est pas encore configurée : renseignez l'URL de la fonction d'analyse dans ⚙ Réglages (voir supabase/README.md).",
+          "Oups, l'analyse n'est pas disponible : la passerelle d'analyse n'a pas répondu. Vérifiez que le serveur IA local est démarré.",
         );
       }
       logInfo(
         "aiAgent",
-        "Aucune fonction Edge configurée : appel direct à l'API (mode développement explicitement autorisé).",
+        "Aucune passerelle configurée : appel direct à l'API (mode développement explicitement autorisé).",
       );
       const res = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
         method: "POST",
@@ -574,8 +691,10 @@ export class AIAgentService {
       }
 
       const json = (await res.json()) as ChatResponse;
-      const content = json.choices?.[0]?.message?.content;
-      if (!content?.trim()) {
+      // FIX : « ?? "" » fige le type en string (le narrowing `!content ||`
+      // n'était pas appliqué par le compilateur dans ce bloc try).
+      const content: string = json.choices?.[0]?.message?.content ?? "";
+      if (content.trim() === "") {
         // // FIX (POINT 1) : réponse vide → nouvelle tentative avec plus de jetons.
         throw new AiAgentError(
           "Le modèle n'a rien renvoyé (réponse vide). Réessayez, ou choisissez un autre modèle dans ⚙ Réglages.",
@@ -589,7 +708,7 @@ export class AIAgentService {
       if (err instanceof AiAgentError) throw err;
       // Les erreurs de la fonction Edge arrivent déjà en français : on les
       // transmet telles quelles pour ne jamais doubler le message.
-      if (err instanceof AiProxyError) throw new AiAgentError(err.message, err.status);
+      if (err instanceof LlmGatewayError) throw new AiAgentError(err.message, err.status);
       throw new AiAgentError(
         err instanceof NetworkError ? err.message : `Appel IA impossible : ${describeError(err)}`,
       );
@@ -653,19 +772,18 @@ export class AIAgentService {
     const proxy = this.proxyUrl;
     if (proxy) {
       try {
-        return await callAiProxyStream(
+        return await callGatewayStream(
           proxy,
           {
             model,
             messages,
-            maxTokens: opts.maxTokens,
+            max_tokens: opts.maxTokens,
             jsonMode: opts.jsonMode === true,
-            reasoningEffort: opts.reasoningEffort ?? "low",
           },
           opts.onDelta,
         );
       } catch (err) {
-        logError("aiAgent", err, { modele: model, etape: "streaming via la fonction Edge" });
+        logError("aiAgent", err, { modele: model, etape: "streaming via la passerelle" });
         throw err instanceof AiAgentError
           ? err
           : new AiAgentError(
@@ -681,9 +799,10 @@ export class AIAgentService {
       idle = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
     };
     try {
-      if (!DIRECT_AI_KEY_ALLOWED) {
+      // FIX (remplacement de Groq) : idem, plus de mode clé directe.
+      if (true) {
         throw new AiAgentError(
-          "Oups, l'analyse n'est pas encore configurée : renseignez l'URL de la fonction d'analyse dans ⚙ Réglages (voir supabase/README.md).",
+          "Oups, l'analyse est indisponible : la passerelle d'analyse n'a pas répondu. Vérifiez que le serveur IA est démarré, puis réessayez.",
         );
       }
       const res = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -692,12 +811,17 @@ export class AIAgentService {
         body: this.buildBody(messages, opts, model, true),
         signal: controller.signal,
       });
-      if (!res.ok || !res.body) {
+      // FIX : capture dans une constante locale — le narrowing de `res.body`
+      // (propriété nullable) est perdu après le `await` du bloc d'erreur.
+      const stream = res.ok ? res.body : null;
+      if (!stream) {
         const detail = await res.text().catch(() => "");
         throw this.httpError(res.status, detail);
       }
 
-      const reader = res.body.getReader();
+      // FIX : cast explicite — le narrowing de `stream` après le if/throw
+      // n'était pas appliqué par le compilateur dans ce bloc try.
+      const reader = (stream as ReadableStream<Uint8Array>).getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let full = "";
@@ -989,6 +1113,74 @@ export class AIAgentService {
       logError("aiAgent", err, { etape: "analyse de site", url });
       return null;
     }
+  }
+
+  /**
+   * // FIX (fiabilité — « pas de connexion trouvée ») : RECONSTITUTION DE LA
+   * LISTE par le modèle quand AUCUN miroir OpenStreetMap ne répond.
+   *
+   * POURQUOI : les miroirs Overpass publics sont des services bénévoles qui
+   * saturent (504, temps d'attente illimité). Sans ce repli, l'utilisateur
+   * restait devant un écran vide alors que l'abonnement Groq, lui, répondait.
+   *
+   * HONNÊTETÉ : ces fiches sont des PROPOSITIONS du modèle, pas un relevé
+   * terrain. Elles portent `origin: "ia"`, un identifiant négatif (jamais
+   * confondu avec un identifiant OSM) et sont signalées comme "estimées" dans
+   * l'interface ; aucune donnée incertaine n'est inventée (téléphone et site
+   * restent vides si le modèle n'est pas sûr).
+   */
+  async discoverVenues(
+    target: VenueDiscoveryTarget,
+    onStep?: (message: string) => void,
+  ): Promise<Venue[]> {
+    const zone = target.displayName || target.shortName;
+    onStep?.(
+      `Serveurs cartographiques injoignables — reconstitution de la liste pour ${target.shortName}…`,
+    );
+
+    const system = [
+      "Tu es un analyste de terrain spécialisé dans la restauration locale.",
+      "Tu listes des établissements de bouche RÉELS et actuellement en activité dans la zone demandée, que tu connais de façon fiable.",
+      "Tu n'inventes JAMAIS un nom d'établissement : en cas de doute, tu en listes moins.",
+      'Réponds STRICTEMENT en JSON, sans texte autour : {"commerces":[{"nom":"","type":"restaurant|fast_food|cafe|bar|pub|bakery","adresse":"","telephone":"","site_web":""}]}',
+      "30 commerces maximum, catégories variées (restauration traditionnelle, rapide, cafés, boulangeries).",
+      "`adresse` au format « 12 rue Exemple, quartier » ; laisse une chaîne vide si tu n'es pas sûr (ne devine ni téléphone ni site).",
+      "`site_web` uniquement si tu es certain du domaine officiel de l'établissement.",
+    ].join(" ");
+
+    const user = [
+      `Zone : ${zone}.`,
+      `Centre de la zone : ${target.lat.toFixed(4)}, ${target.lon.toFixed(4)}.`,
+      "Liste les établissements de bouche présents dans cette zone, indépendants comme chaînes.",
+    ].join(" ");
+
+    const raw = await this.chatJson<{ commerces?: RawAiVenue[] }>(
+      [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      {
+        // Étape simple : modèle rapide, effort de raisonnement minimal, budget serré.
+        model: this.fastModel,
+        maxTokens: 2_800,
+        reasoningEffort: "low",
+        timeoutMs: 25_000,
+      },
+    );
+
+    const venues = mapAiVenues(raw?.commerces, target);
+
+    if (venues.length === 0) {
+      throw new AiAgentError(
+        "Le service cartographique et l'analyse n'ont renvoyé aucun commerce pour cette zone. Reformulez la recherche (quartier, code postal) puis réessayez.",
+      );
+    }
+
+    logInfo("aiAgent", `${venues.length} commerces reconstitues pour ${target.shortName}`, {
+      zone,
+      modele: this.fastModel,
+    });
+    return venues;
   }
 
   /**
